@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+target/
+
+# Build output
+build/
+dist/
+
+# Environment variables (NEVER commit!)
+.env
+.env*
+*.env
+
+# Mina/o1js cache
+cache/
+.cache/
+
+# Test state
+.state/
+
+# Private keys (NEVER commit!)
+keys/
+*.key
+*.pem
+
+# ZCash data (databases, wallets, logs)
+zcash/**/data/
+**/lightwalletd.log
+*.sqlite
+escrow.sealed
+salt
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Documentation (may be large)
+mina_docs/
+
+data/
+db/

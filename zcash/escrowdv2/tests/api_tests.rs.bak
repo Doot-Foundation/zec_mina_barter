@@ -1,0 +1,406 @@
+// API endpoint tests
+//
+// Tests for HTTP API endpoints covering:
+// - GET /address
+// - GET /status
+// - POST /bind-origin
+// - POST /funding/shielded
+// - POST /funding/transparent
+// - POST /set-in-transit
+// - POST /send-back
+// - POST /send-target
+//
+// Tests include authentication, authorization, validation, and error handling
+
+mod common;
+
+use common::fixtures::*;
+use axum::http::StatusCode;
+
+// Note: These tests use axum::test to simulate HTTP requests
+// without starting an actual server
+
+#[tokio::test]
+async fn test_get_address_returns_escrow_address() {
+    // Test that GET /address returns the escrow address
+}
+
+#[tokio::test]
+async fn test_get_address_no_auth_required() {
+    // Test that GET /address doesn't require authentication
+}
+
+#[tokio::test]
+async fn test_get_status_returns_inactive_initially() {
+    // Test that GET /status returns inactive status initially
+}
+
+#[tokio::test]
+async fn test_get_status_returns_active_after_binding() {
+    // Test that GET /status shows active after origin binding
+}
+
+#[tokio::test]
+async fn test_get_status_shows_in_transit_when_set() {
+    // Test that GET /status includes in_transit flag
+}
+
+#[tokio::test]
+async fn test_get_status_includes_origin_after_binding() {
+    // Test that GET /status includes origin details
+}
+
+#[tokio::test]
+async fn test_bind_origin_success_shielded() {
+    // Test successful shielded origin binding
+}
+
+#[tokio::test]
+async fn test_bind_origin_success_transparent() {
+    // Test successful transparent origin binding
+}
+
+#[tokio::test]
+async fn test_bind_origin_requires_api_key() {
+    // Test that bind-origin fails without valid API key
+}
+
+#[tokio::test]
+async fn test_bind_origin_requires_localhost() {
+    // Test that bind-origin fails from non-localhost
+}
+
+#[tokio::test]
+async fn test_bind_origin_prevents_double_bind() {
+    // Test that second bind-origin call fails
+}
+
+#[tokio::test]
+async fn test_bind_origin_invalid_api_key() {
+    // Test that incorrect API key is rejected
+}
+
+#[tokio::test]
+async fn test_funding_shielded_success() {
+    // Test successful shielded funding verification
+}
+
+#[tokio::test]
+async fn test_funding_shielded_requires_api_key() {
+    // Test that funding/shielded requires valid API key
+}
+
+#[tokio::test]
+async fn test_funding_shielded_memo_must_match_api_key() {
+    // Test that memo must equal api_key
+}
+
+#[tokio::test]
+async fn test_funding_shielded_verifies_on_chain() {
+    // Test that on-chain verification is performed
+}
+
+#[tokio::test]
+async fn test_funding_shielded_insufficient_amount() {
+    // Test error when funding amount < minimum
+}
+
+#[tokio::test]
+async fn test_funding_shielded_no_matching_note() {
+    // Test error when no note with matching memo found
+}
+
+#[tokio::test]
+async fn test_funding_shielded_binds_origin() {
+    // Test that successful funding binds origin
+}
+
+#[tokio::test]
+async fn test_funding_transparent_success() {
+    // Test successful transparent funding verification
+}
+
+#[tokio::test]
+async fn test_funding_transparent_requires_api_key() {
+    // Test that funding/transparent requires valid API key
+}
+
+#[tokio::test]
+async fn test_funding_transparent_requires_signature() {
+    // Test that signed message is required
+}
+
+#[tokio::test]
+async fn test_funding_transparent_verifies_signature() {
+    // Test that signature verification is performed
+}
+
+#[tokio::test]
+async fn test_funding_transparent_signature_must_include_api_key() {
+    // Test that signed message includes api_key
+}
+
+#[tokio::test]
+async fn test_funding_transparent_signature_must_include_escrow_addr() {
+    // Test that signed message includes escrow address
+}
+
+#[tokio::test]
+async fn test_funding_transparent_verifies_balance() {
+    // Test that on-chain balance check is performed
+}
+
+#[tokio::test]
+async fn test_funding_transparent_insufficient_balance() {
+    // Test error when balance < minimum
+}
+
+#[tokio::test]
+async fn test_funding_transparent_binds_origin() {
+    // Test that successful funding binds origin
+}
+
+#[tokio::test]
+async fn test_set_in_transit_success() {
+    // Test successful set-in-transit
+}
+
+#[tokio::test]
+async fn test_set_in_transit_requires_localhost() {
+    // Test that set-in-transit requires localhost
+}
+
+#[tokio::test]
+async fn test_set_in_transit_requires_operator_token() {
+    // Test that operator token is required
+}
+
+#[tokio::test]
+async fn test_set_in_transit_requires_bearer_prefix() {
+    // Test that Authorization header must use Bearer scheme
+}
+
+#[tokio::test]
+async fn test_set_in_transit_requires_verification() {
+    // Test that set-in-transit requires verified state
+}
+
+#[tokio::test]
+async fn test_set_in_transit_verifies_mina_tx() {
+    // Test that Mina transaction is verified
+}
+
+#[tokio::test]
+async fn test_set_in_transit_stores_mina_tx_hash() {
+    // Test that Mina tx hash is stored
+}
+
+#[tokio::test]
+async fn test_set_in_transit_checks_balance_vs_expected() {
+    // Test that balance is checked against expected amount
+}
+
+#[tokio::test]
+async fn test_set_in_transit_allows_10_percent_slippage() {
+    // Test that 10% slippage is allowed
+}
+
+#[tokio::test]
+async fn test_set_in_transit_insufficient_balance_for_swap() {
+    // Test error when balance < 90% of expected
+}
+
+#[tokio::test]
+async fn test_set_in_transit_idempotent_when_already_set() {
+    // Test that calling set-in-transit twice is idempotent
+}
+
+#[tokio::test]
+async fn test_send_back_success_shielded_origin() {
+    // Test successful refund to shielded origin
+}
+
+#[tokio::test]
+async fn test_send_back_success_transparent_origin() {
+    // Test successful refund to transparent origin
+}
+
+#[tokio::test]
+async fn test_send_back_requires_api_key() {
+    // Test that send-back requires valid API key
+}
+
+#[tokio::test]
+async fn test_send_back_requires_verification() {
+    // Test that send-back requires verified state
+}
+
+#[tokio::test]
+async fn test_send_back_requires_not_in_transit() {
+    // Test that send-back fails when in_transit=true
+}
+
+#[tokio::test]
+async fn test_send_back_requires_origin() {
+    // Test that send-back fails without origin binding
+}
+
+#[tokio::test]
+async fn test_send_back_transparent_requires_signature() {
+    // Test that transparent refund requires signed message
+}
+
+#[tokio::test]
+async fn test_send_back_transparent_verifies_signature() {
+    // Test that transparent signature is verified
+}
+
+#[tokio::test]
+async fn test_send_back_acquires_send_guard() {
+    // Test that SendGuard is acquired during send-back
+}
+
+#[tokio::test]
+async fn test_send_back_releases_send_guard() {
+    // Test that SendGuard is released after send-back
+}
+
+#[tokio::test]
+async fn test_send_back_fails_when_send_in_progress() {
+    // Test that concurrent send-back is prevented
+}
+
+#[tokio::test]
+async fn test_send_back_broadcasts_transaction() {
+    // Test that transaction is broadcast
+}
+
+#[tokio::test]
+async fn test_send_back_returns_txid() {
+    // Test that txid is returned in response
+}
+
+#[tokio::test]
+async fn test_send_back_schedules_shutdown() {
+    // Test that shutdown is scheduled after send-back
+}
+
+#[tokio::test]
+async fn test_send_target_success() {
+    // Test successful send to target address
+}
+
+#[tokio::test]
+async fn test_send_target_requires_localhost() {
+    // Test that send-target requires localhost
+}
+
+#[tokio::test]
+async fn test_send_target_requires_operator_token() {
+    // Test that operator token is required
+}
+
+#[tokio::test]
+async fn test_send_target_requires_verification() {
+    // Test that send-target requires verified state
+}
+
+#[tokio::test]
+async fn test_send_target_requires_in_transit() {
+    // Test that send-target requires in_transit=true
+}
+
+#[tokio::test]
+async fn test_send_target_acquires_send_guard() {
+    // Test that SendGuard is acquired during send-target
+}
+
+#[tokio::test]
+async fn test_send_target_releases_send_guard() {
+    // Test that SendGuard is released after send-target
+}
+
+#[tokio::test]
+async fn test_send_target_clears_in_transit() {
+    // Test that in_transit is cleared after send-target
+}
+
+#[tokio::test]
+async fn test_send_target_calls_cleanup() {
+    // Test that key_manager.cleanup_after_send() is called
+}
+
+#[tokio::test]
+async fn test_send_target_broadcasts_transaction() {
+    // Test that transaction is broadcast
+}
+
+#[tokio::test]
+async fn test_send_target_returns_txid() {
+    // Test that txid is returned in response
+}
+
+#[tokio::test]
+async fn test_send_target_schedules_shutdown() {
+    // Test that shutdown is scheduled after send-target
+}
+
+#[tokio::test]
+async fn test_ensure_localhost_accepts_127_0_0_1() {
+    // Test that 127.0.0.1 is accepted as localhost
+}
+
+#[tokio::test]
+async fn test_ensure_localhost_accepts_ipv6_loopback() {
+    // Test that ::1 is accepted as localhost
+}
+
+#[tokio::test]
+async fn test_ensure_localhost_rejects_external_ip() {
+    // Test that external IPs are rejected
+}
+
+#[tokio::test]
+async fn test_ensure_operator_accepts_valid_bearer_token() {
+    // Test that valid Bearer token is accepted
+}
+
+#[tokio::test]
+async fn test_ensure_operator_rejects_missing_header() {
+    // Test that missing Authorization header is rejected
+}
+
+#[tokio::test]
+async fn test_ensure_operator_rejects_wrong_token() {
+    // Test that incorrect token is rejected
+}
+
+#[tokio::test]
+async fn test_ensure_operator_rejects_missing_bearer_prefix() {
+    // Test that token without "Bearer " prefix is rejected
+}
+
+#[tokio::test]
+async fn test_ensure_operator_rejects_when_token_not_configured() {
+    // Test that requests are rejected when OPERATOR_TOKEN not set
+}
+
+#[tokio::test]
+async fn test_api_key_validation_empty_string() {
+    // Test that empty API key is rejected
+}
+
+#[tokio::test]
+async fn test_api_key_validation_case_sensitive() {
+    // Test that API key validation is case-sensitive
+}
+
+#[tokio::test]
+async fn test_concurrent_requests_to_different_endpoints() {
+    // Test that concurrent requests to different endpoints work
+}
+
+#[tokio::test]
+async fn test_error_responses_use_correct_status_codes() {
+    // Test that errors return appropriate HTTP status codes
+}

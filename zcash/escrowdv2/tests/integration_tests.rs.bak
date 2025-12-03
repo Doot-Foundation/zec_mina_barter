@@ -1,0 +1,244 @@
+// Integration tests
+//
+// End-to-end flow tests covering:
+// - Full refund flows (shielded and transparent)
+// - Full swap flows (shielded and transparent)
+// - Error paths and edge cases
+// - State persistence across restarts
+// - Concurrent operation handling
+// - Key lifecycle verification
+
+mod common;
+
+use common::fixtures::*;
+use common::mocks::*;
+
+// Full refund flow tests
+
+#[tokio::test]
+async fn test_full_refund_flow_shielded() {
+    // 1. Initialize escrowd
+    // 2. Call POST /funding/shielded with memo
+    // 3. Verify state transitions to verified=true, origin=shielded_addr
+    // 4. Call POST /send-back
+    // 5. Verify transaction broadcast to zcashd
+    // 6. Verify state cleanup
+}
+
+#[tokio::test]
+async fn test_full_refund_flow_transparent() {
+    // 1. Initialize escrowd
+    // 2. Call POST /funding/transparent with signature
+    // 3. Verify state transitions to verified=true, origin=transparent_addr
+    // 4. Call POST /send-back with signed message
+    // 5. Verify transaction broadcast to zcashd
+    // 6. Verify state cleanup
+}
+
+// Full swap flow tests
+
+#[tokio::test]
+async fn test_full_swap_flow_shielded() {
+    // 1. Initialize escrowd
+    // 2. Call POST /funding/shielded
+    // 3. Call POST /set-in-transit with Mina tx hash
+    // 4. Verify state: verified=true, in_transit=true
+    // 5. Call POST /send-target with target address
+    // 6. Verify transaction broadcast
+    // 7. Verify in_transit cleared
+    // 8. Verify key cleanup called
+}
+
+#[tokio::test]
+async fn test_full_swap_flow_transparent() {
+    // 1. Initialize escrowd
+    // 2. Call POST /funding/transparent
+    // 3. Call POST /set-in-transit with Mina tx hash
+    // 4. Verify state: verified=true, in_transit=true
+    // 5. Call POST /send-target with target address
+    // 6. Verify transaction broadcast
+    // 7. Verify in_transit cleared
+    // 8. Verify key cleanup called
+}
+
+// Error path tests
+
+#[tokio::test]
+async fn test_refund_fails_when_in_transit() {
+    // 1. Fund escrow (shielded)
+    // 2. Set in_transit=true
+    // 3. Attempt POST /send-back
+    // 4. Verify error: TransitMismatch
+    // 5. Verify no transaction broadcast
+}
+
+#[tokio::test]
+async fn test_swap_fails_when_not_in_transit() {
+    // 1. Fund escrow (shielded)
+    // 2. Do NOT set in_transit
+    // 3. Attempt POST /send-target
+    // 4. Verify error: TransitMismatch
+    // 5. Verify no transaction broadcast
+}
+
+#[tokio::test]
+async fn test_insufficient_funds_for_swap() {
+    // 1. Fund escrow with 0.01 ZEC
+    // 2. Call POST /set-in-transit with expected_mina_amount requiring 1 ZEC
+    // 3. Verify error: InsufficientFunds
+    // 4. Verify in_transit=false
+}
+
+#[tokio::test]
+async fn test_invalid_mina_tx_prevents_in_transit() {
+    // 1. Fund escrow
+    // 2. Call POST /set-in-transit with invalid/non-existent Mina tx
+    // 3. Verify in_transit=false
+    // 4. Verify no state change
+}
+
+#[tokio::test]
+async fn test_double_spend_prevention_via_send_guard() {
+    // 1. Fund escrow
+    // 2. Start POST /send-back (hold SendGuard)
+    // 3. Attempt concurrent POST /send-back
+    // 4. Verify second request gets Busy error
+    // 5. Verify only one transaction broadcast
+}
+
+#[tokio::test]
+async fn test_concurrent_set_in_transit_safe() {
+    // 1. Fund escrow
+    // 2. Call POST /set-in-transit concurrently (2 requests)
+    // 3. Verify both succeed or one succeeds (idempotent)
+    // 4. Verify consistent state
+}
+
+// State persistence tests
+
+#[tokio::test]
+async fn test_state_persists_across_restart() {
+    // 1. Initialize escrowd instance 1
+    // 2. Fund escrow and bind origin
+    // 3. Shutdown instance 1
+    // 4. Initialize escrowd instance 2 (same data dir)
+    // 5. Verify state restored: verified=true, origin=original
+    // 6. Call POST /send-back from instance 2
+    // 7. Verify successful transaction
+}
+
+#[tokio::test]
+async fn test_in_transit_persists_across_restart() {
+    // 1. Initialize escrowd instance 1
+    // 2. Fund escrow
+    // 3. Set in_transit=true with Mina tx hash
+    // 4. Shutdown instance 1
+    // 5. Initialize escrowd instance 2
+    // 6. Verify in_transit=true, mina_tx_hash=original
+    // 7. Call POST /send-target from instance 2
+    // 8. Verify successful transaction
+}
+
+// Key lifecycle tests
+
+#[tokio::test]
+async fn test_key_generation_and_sealing() {
+    // 1. Initialize KeyManager
+    // 2. Verify sealed_key.enc file created
+    // 3. Verify file permissions = 0600
+    // 4. Verify spending key can be unsealed
+    // 5. Verify UFVK can be derived
+}
+
+#[tokio::test]
+async fn test_key_unsealing_for_transaction_only() {
+    // 1. Initialize KeyManager
+    // 2. Verify spending key NOT in memory initially
+    // 3. Call sweep_full_balance
+    // 4. Verify spending key unsealed during transaction
+    // 5. Verify spending key zeroized after transaction
+}
+
+#[tokio::test]
+async fn test_key_cleanup_after_send_target() {
+    // 1. Complete full swap flow
+    // 2. Verify key_manager.cleanup_after_send() called
+    // 3. Verify sealed key file still exists (for verification)
+    // 4. Verify future send operations still possible
+}
+
+// Security tests
+
+#[tokio::test]
+async fn test_spending_key_never_in_logs() {
+    // 1. Initialize KeyManager
+    // 2. Perform full transaction flow
+    // 3. Capture all log output
+    // 4. Verify spending key hex never appears in logs
+    // 5. Verify only UFVK appears in logs
+}
+
+#[tokio::test]
+async fn test_memo_replay_prevention() {
+    // 1. Fund escrow with memo="api_key_123"
+    // 2. Origin bound to addr_1
+    // 3. Attempt POST /funding/shielded again with same memo but addr_2
+    // 4. Verify error: AlreadyBound
+    // 5. Verify origin still = addr_1
+}
+
+#[tokio::test]
+async fn test_transparent_signature_replay_prevention() {
+    // 1. Fund escrow (transparent) with signature for escrow_A
+    // 2. Attempt to use same signature for escrow_B (different address)
+    // 3. Verify signature verification fails
+    // 4. Verify origin NOT bound on escrow_B
+}
+
+// Edge case tests
+
+#[tokio::test]
+async fn test_missing_state_file_creates_default() {
+    // 1. Delete state.json file
+    // 2. Initialize escrowd
+    // 3. Verify default state: verified=false, in_transit=false
+    // 4. Verify state file created on first persist
+}
+
+#[tokio::test]
+async fn test_corrupted_state_file_fallback() {
+    // 1. Write invalid JSON to state.json
+    // 2. Initialize escrowd
+    // 3. Verify graceful fallback to default state
+    // 4. Verify state file overwritten with valid JSON
+}
+
+#[tokio::test]
+async fn test_simultaneous_refund_and_swap_prevented() {
+    // 1. Fund escrow
+    // 2. Start POST /send-back (acquire SendGuard)
+    // 3. Attempt POST /send-target concurrently
+    // 4. Verify second request gets Busy error
+    // 5. Verify only refund transaction broadcast
+}
+
+#[tokio::test]
+async fn test_network_failure_during_broadcast_rollback() {
+    // 1. Fund escrow
+    // 2. Mock zcashd to return network error
+    // 3. Attempt POST /send-back
+    // 4. Verify error returned to client
+    // 5. Verify state unchanged (funds still spendable)
+    // 6. Verify SendGuard released
+}
+
+#[tokio::test]
+async fn test_lightwallet_sync_failure_recovery() {
+    // 1. Fund escrow
+    // 2. Mock lightwalletd to return error
+    // 3. Attempt balance query
+    // 4. Verify error propagated
+    // 5. Restore lightwalletd mock
+    // 6. Retry balance query
+    // 7. Verify successful sync and balance
+}

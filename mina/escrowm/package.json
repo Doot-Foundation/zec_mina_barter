@@ -1,0 +1,32 @@
+{
+  "name": "escrowm",
+  "version": "1.0.0",
+  "description": "Settlement service for MinaEscrowPool OffchainState management",
+  "author": "",
+  "license": "Apache-2.0",
+  "type": "module",
+  "main": "build/src/index.js",
+  "types": "build/src/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "buildw": "tsc --watch",
+    "start": "node build/src/index.js",
+    "dev": "npm run build && npm start",
+    "lint": "npx eslint src/* --fix"
+  },
+  "dependencies": {
+    "o1js": "^2.2.0",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.1",
+    "@typescript-eslint/eslint-plugin": "^5.5.0",
+    "@typescript-eslint/parser": "^5.5.0",
+    "eslint": "^8.7.0",
+    "eslint-plugin-o1js": "^0.4.0",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=18.14.0"
+  }
+}

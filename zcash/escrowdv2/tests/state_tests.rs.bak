@@ -1,0 +1,424 @@
+// State machine tests
+//
+// Tests for AppState covering:
+// - State initialization and loading
+// - Origin binding (success, double-bind prevention)
+// - Verification state management
+// - In-transit state transitions
+// - SendGuard concurrency protection
+// - State persistence and recovery
+// - API key validation
+
+mod common;
+
+use common::*;
+use escrowdv2::state::{AppState, OriginBinding, OriginType};
+use escrowdv2::{AppError, config::Config, key::KeyManager, wallet::Wallet, mina::MinaClient};
+use std::fs;
+use std::sync::Arc;
+use tempfile::TempDir;
+
+async fn create_test_app_state() -> Result<(AppState, TempDir, Config), AppError> {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let mut config = Config::default_test();
+    config.data_dir = temp_dir.path().to_path_buf();
+
+    // Initialize key manager
+    KeyManager::init(&config)?;
+    let key_manager = KeyManager::load(&config)?;
+
+    // Create wallet with mock zcashd RPC
+    use escrowdv2::zcashd::ZcashdRpcClient;
+    let rpc = ZcashdRpcClient::new(
+        config.zcashd_rpc_url.clone(),
+        config.zcashd_rpc_user.clone(),
+        config.zcashd_rpc_pass.clone(),
+    );
+    let wallet = Wallet::create(&config, &key_manager, rpc).await?;
+
+    // Create Mina client
+    let mina_client = MinaClient::new(config.mina_endpoint.clone());
+
+    // Create app state
+    let state = AppState::new(config.clone(), key_manager, wallet, mina_client);
+
+    // Extract inner AppState from Arc
+    let app_state = Arc::try_unwrap(state).unwrap_or_else(|arc| (*arc).clone());
+    Ok((app_state, temp_dir, config))
+}
+
+#[tokio::test]
+async fn test_state_initialization_inactive() {
+    let (state, _temp_dir, _config) = create_test_app_state().await.expect("Failed to create test state");
+
+    let status = state.status();
+    assert_eq!(status.status, "inactive");
+    assert!(!status.verified);
+    assert!(!status.in_transit);
+    assert!(status.origin.is_none());
+    assert!(status.mina_tx_hash.is_none());
+}
+
+#[tokio::test]
+async fn test_bind_origin_shielded_success() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    let binding = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1test123456789".to_string(),
+    };
+
+    let result = state.bind_origin(binding.clone());
+    assert!(result.is_ok());
+
+    let status = state.status();
+    assert_eq!(status.status, "active");
+    assert!(status.verified);
+    assert!(status.origin.is_some());
+
+    let origin = status.origin.unwrap();
+    assert!(matches!(origin.origin_type, OriginType::Shielded));
+    assert_eq!(origin.origin_address, "zs1test123456789");
+}
+
+#[tokio::test]
+async fn test_bind_origin_transparent_success() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    let binding = OriginBinding {
+        origin_type: OriginType::Transparent,
+        origin_address: "t1test123456789".to_string(),
+    };
+
+    let result = state.bind_origin(binding);
+    assert!(result.is_ok());
+
+    let origin = state.origin().unwrap();
+    assert!(matches!(origin.origin_type, OriginType::Transparent));
+}
+
+#[tokio::test]
+async fn test_bind_origin_double_bind_prevented() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    let binding1 = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1first".to_string(),
+    };
+
+    let binding2 = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1second".to_string(),
+    };
+
+    // First bind should succeed
+    assert!(state.bind_origin(binding1).is_ok());
+
+    // Second bind should fail
+    let result = state.bind_origin(binding2);
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), AppError::AlreadyBound));
+
+    // Origin should still be the first one
+    let origin = state.origin().unwrap();
+    assert_eq!(origin.origin_address, "zs1first");
+}
+
+#[tokio::test]
+async fn test_ensure_verified_fails_when_not_verified() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    let result = state.ensure_verified();
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), AppError::NotVerified));
+}
+
+#[tokio::test]
+async fn test_ensure_verified_succeeds_when_verified() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    let binding = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1test".to_string(),
+    };
+
+    state.bind_origin(binding).unwrap();
+
+    let result = state.ensure_verified();
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_set_in_transit_requires_verification() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    // Should fail when not verified
+    let result = state.set_in_transit(true, None);
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), AppError::NotVerified));
+}
+
+#[tokio::test]
+async fn test_set_in_transit_success() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    // First verify
+    let binding = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1test".to_string(),
+    };
+    state.bind_origin(binding).unwrap();
+
+    // Now set in_transit
+    let mina_hash = Some("5JuABCDEF123456789".to_string());
+    let result = state.set_in_transit(true, mina_hash.clone());
+    assert!(result.is_ok());
+
+    let status = state.status();
+    assert!(status.in_transit);
+    assert_eq!(status.mina_tx_hash, mina_hash);
+}
+
+#[tokio::test]
+async fn test_set_in_transit_false_clears_hash() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    // Verify and set in_transit
+    let binding = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1test".to_string(),
+    };
+    state.bind_origin(binding).unwrap();
+    state.set_in_transit(true, Some("hash123".to_string())).unwrap();
+
+    // Clear in_transit
+    let result = state.set_in_transit(false, None);
+    assert!(result.is_ok());
+
+    let status = state.status();
+    assert!(!status.in_transit);
+    assert!(status.mina_tx_hash.is_none());
+}
+
+#[tokio::test]
+async fn test_in_transit_getter() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    assert!(!state.in_transit());
+
+    // Verify and set in_transit
+    let binding = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1test".to_string(),
+    };
+    state.bind_origin(binding).unwrap();
+    state.set_in_transit(true, None).unwrap();
+
+    assert!(state.in_transit());
+}
+
+#[tokio::test]
+async fn test_send_guard_acquired_successfully() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+    let shared_state = AppState::new(
+        _config.clone(),
+        state.key_manager.clone(),
+        state.wallet.clone(),
+        state.mina_client.clone(),
+    );
+
+    let guard = shared_state.begin_send();
+    assert!(guard.is_ok());
+}
+
+#[tokio::test]
+async fn test_send_guard_prevents_concurrent_sends() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+    let shared_state = AppState::new(
+        _config.clone(),
+        state.key_manager.clone(),
+        state.wallet.clone(),
+        state.mina_client.clone(),
+    );
+
+    let _guard1 = shared_state.begin_send().unwrap();
+
+    // Second begin_send should fail
+    let guard2 = shared_state.begin_send();
+    assert!(guard2.is_err());
+    assert!(matches!(guard2.unwrap_err(), AppError::Busy));
+}
+
+#[tokio::test]
+async fn test_send_guard_released_on_drop() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+    let shared_state = AppState::new(
+        _config.clone(),
+        state.key_manager.clone(),
+        state.wallet.clone(),
+        state.mina_client.clone(),
+    );
+
+    {
+        let _guard1 = shared_state.begin_send().unwrap();
+        // Guard dropped here
+    }
+
+    // Should succeed after guard dropped
+    let guard2 = shared_state.begin_send();
+    assert!(guard2.is_ok());
+}
+
+#[tokio::test]
+async fn test_set_in_transit_fails_when_send_in_progress() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+    let shared_state = AppState::new(
+        _config.clone(),
+        state.key_manager.clone(),
+        state.wallet.clone(),
+        state.mina_client.clone(),
+    );
+
+    // Verify first
+    let binding = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1test".to_string(),
+    };
+    shared_state.bind_origin(binding).unwrap();
+
+    let _guard = shared_state.begin_send().unwrap();
+
+    // Should fail while send in progress
+    let result = shared_state.set_in_transit(true, None);
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), AppError::Busy));
+}
+
+#[tokio::test]
+async fn test_state_persists_across_initialization() {
+    let temp_dir = TempDir::new().expect("Failed to create temp dir");
+    let data_dir = temp_dir.path().to_path_buf();
+
+    let config = Config {
+        api_key: "test_api_key".to_string(),
+        operator_token: "test_operator_token".to_string(),
+        data_dir: data_dir.clone(),
+        lightwalletd_uri: "http://localhost:19067".to_string(),
+        zcashd_rpc_url: "http://localhost:18232".to_string(),
+        zcashd_rpc_user: "zcashrpc".to_string(),
+        zcashd_rpc_password: "password".to_string(),
+        server_port: 0,
+        network: "test".to_string(),
+    };
+
+    // Create first instance
+    {
+        let key_manager = KeyManager::new(&config).unwrap();
+        let wallet = Wallet::new(&config, &key_manager).unwrap();
+        let mina_client = MinaClient::new("https://api.minascan.io/node/devnet/v1/graphql".to_string());
+        let state = AppState::new(config.clone(), key_manager, wallet, mina_client);
+
+        let binding = OriginBinding {
+            origin_type: OriginType::Shielded,
+            origin_address: "zs1persisted".to_string(),
+        };
+        state.bind_origin(binding).unwrap();
+        state.set_in_transit(true, Some("hash_persisted".to_string())).unwrap();
+    }
+
+    // Create second instance - should load persisted state
+    {
+        let key_manager = KeyManager::new(&config).unwrap();
+        let wallet = Wallet::new(&config, &key_manager).unwrap();
+        let mina_client = MinaClient::new("https://api.minascan.io/node/devnet/v1/graphql".to_string());
+        let state = AppState::new(config.clone(), key_manager, wallet, mina_client);
+
+        let status = state.status();
+        assert!(status.verified);
+        assert!(status.in_transit);
+        assert_eq!(status.origin.unwrap().origin_address, "zs1persisted");
+        assert_eq!(status.mina_tx_hash.unwrap(), "hash_persisted");
+    }
+}
+
+#[tokio::test]
+async fn test_ensure_api_key_correct() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    let result = state.ensure_api_key("test_api_key");
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_ensure_api_key_incorrect() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    let result = state.ensure_api_key("wrong_key");
+    assert!(result.is_err());
+    assert!(matches!(result.unwrap_err(), AppError::Unauthorized));
+}
+
+#[tokio::test]
+async fn test_ensure_api_key_empty() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    let result = state.ensure_api_key("");
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_origin_getter_returns_none_initially() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    assert!(state.origin().is_none());
+}
+
+#[tokio::test]
+async fn test_origin_getter_returns_some_after_bind() {
+    let (state, _temp_dir, _config) = create_test_app_state().await;
+
+    let binding = OriginBinding {
+        origin_type: OriginType::Transparent,
+        origin_address: "t1test".to_string(),
+    };
+
+    state.bind_origin(binding.clone()).unwrap();
+
+    let origin = state.origin().unwrap();
+    assert_eq!(origin.origin_address, "t1test");
+}
+
+#[tokio::test]
+async fn test_state_file_created_on_first_persist() {
+    let (state, temp_dir, _config) = create_test_app_state().await;
+
+    let state_file = temp_dir.path().join("state.json");
+    assert!(!state_file.exists());
+
+    // Binding triggers persist
+    let binding = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1test".to_string(),
+    };
+    state.bind_origin(binding).unwrap();
+
+    assert!(state_file.exists());
+}
+
+#[tokio::test]
+async fn test_state_file_contains_valid_json() {
+    let (state, temp_dir, _config) = create_test_app_state().await;
+
+    let binding = OriginBinding {
+        origin_type: OriginType::Shielded,
+        origin_address: "zs1test".to_string(),
+    };
+    state.bind_origin(binding).unwrap();
+
+    let state_file = temp_dir.path().join("state.json");
+    let contents = fs::read_to_string(state_file).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&contents).unwrap();
+
+    assert!(parsed["verified"].as_bool().unwrap());
+    assert_eq!(parsed["origin"]["origin_address"].as_str().unwrap(), "zs1test");
+}

@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  lightwalletd:
+    image: electriccoinco/lightwalletd:latest
+    container_name: lightwalletd
+    network_mode: host
+    restart: unless-stopped
+    command: >
+      --grpc-bind-addr=0.0.0.0:9067
+      --http-bind-addr=0.0.0.0:9068
+      --zcash-conf-path=/zcashd/zcash.conf
+      --data-dir=/data
+      --log-file=/data/lightwalletd.log
+      --no-tls-very-insecure
+    volumes:
+      # Mount zcashd data directory read-only (contains zcash.conf)
+      - /var/lib/docker/volumes/zcash-testnet-data/_data:/zcashd:ro
+      # Lightwalletd cache and logs
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9068/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s

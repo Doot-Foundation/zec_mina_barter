@@ -1,0 +1,283 @@
+// Lightwallet and wallet sync tests
+//
+// Tests for wallet operations including:
+// - Wallet initialization
+// - Balance queries (spendable, transparent, shielded)
+// - Funding verification with memo matching
+// - Transaction building and broadcasting
+// - Transparent signature verification
+// - Network validation
+
+mod common;
+
+use common::fixtures::*;
+use common::mocks::*;
+
+// Note: Many of these tests will be integration-style tests that require
+// mocked wallet database and lightwallet sync operations
+
+#[tokio::test]
+async fn test_wallet_address_generation() {
+    // Test that wallet generates valid address
+}
+
+#[tokio::test]
+async fn test_wallet_sync_success() {
+    // Test successful sync with lightwalletd
+}
+
+#[tokio::test]
+async fn test_wallet_sync_failure_lightwallet_unreachable() {
+    // Test sync failure when lightwalletd is down
+}
+
+#[tokio::test]
+async fn test_spendable_balance_zero_initial() {
+    // Test that initial spendable balance is 0
+}
+
+#[tokio::test]
+async fn test_spendable_balance_after_funding() {
+    // Test balance correctly reflects after receiving funds
+}
+
+#[tokio::test]
+async fn test_spendable_balance_includes_all_pools() {
+    // Test that balance combines Sapling + Orchard + Transparent
+}
+
+#[tokio::test]
+async fn test_transparent_balance_zero_initial() {
+    // Test that initial transparent balance is 0
+}
+
+#[tokio::test]
+async fn test_transparent_balance_excludes_shielded() {
+    // Test transparent balance only includes transparent funds
+}
+
+#[tokio::test]
+async fn test_verify_shielded_funding_no_notes() {
+    // Test returns false when no notes found
+}
+
+#[tokio::test]
+async fn test_verify_shielded_funding_memo_matches() {
+    // Test returns true when note with matching memo is found
+}
+
+#[tokio::test]
+async fn test_verify_shielded_funding_memo_mismatch() {
+    // Test returns false when memo doesn't match
+}
+
+#[tokio::test]
+async fn test_verify_shielded_funding_amount_below_minimum() {
+    // Test returns false when note value < minimum
+}
+
+#[tokio::test]
+async fn test_verify_shielded_funding_multiple_notes_finds_match() {
+    // Test finds correct note among multiple
+}
+
+#[tokio::test]
+async fn test_verify_shielded_funding_sapling_note() {
+    // Test can find Sapling notes
+}
+
+#[tokio::test]
+async fn test_verify_shielded_funding_orchard_note() {
+    // Test can find Orchard notes
+}
+
+#[tokio::test]
+async fn test_sweep_full_balance_success() {
+    // Test successful sweep to destination
+}
+
+#[tokio::test]
+async fn test_sweep_full_balance_insufficient_funds() {
+    // Test error when no spendable funds
+}
+
+#[tokio::test]
+async fn test_sweep_full_balance_invalid_destination() {
+    // Test error with invalid destination address
+}
+
+#[tokio::test]
+async fn test_sweep_full_balance_wrong_network_destination() {
+    // Test error when destination is wrong network
+}
+
+#[tokio::test]
+async fn test_sweep_full_balance_broadcasts_transaction() {
+    // Test that transaction is broadcast via zcashd RPC
+}
+
+#[tokio::test]
+async fn test_sweep_full_balance_uses_zip317_fees() {
+    // Test that ZIP-317 fee calculation is used
+}
+
+#[tokio::test]
+async fn test_verify_transparent_signed_message_valid() {
+    // Test valid signature verification
+}
+
+#[tokio::test]
+async fn test_verify_transparent_signed_message_invalid_signature() {
+    // Test invalid signature rejection
+}
+
+#[tokio::test]
+async fn test_verify_transparent_signed_message_wrong_address() {
+    // Test signature for different address rejected
+}
+
+#[tokio::test]
+async fn test_verify_transparent_signed_message_invalid_base64() {
+    // Test invalid base64 encoding rejected
+}
+
+#[tokio::test]
+async fn test_verify_transparent_signed_message_wrong_length() {
+    // Test signature with wrong length (not 65 bytes) rejected
+}
+
+#[tokio::test]
+async fn test_verify_transparent_signed_message_invalid_header() {
+    // Test signature with invalid header byte rejected
+}
+
+#[tokio::test]
+async fn test_zatoshis_from_zec_conversion() {
+    // Test ZEC to zatoshis conversion
+    // 1.5 ZEC = 150,000,000 zatoshis
+}
+
+#[tokio::test]
+async fn test_zatoshis_from_zec_negative_amount() {
+    // Test negative amount rejected
+}
+
+#[tokio::test]
+async fn test_zatoshis_from_zec_nan() {
+    // Test NaN rejected
+}
+
+#[tokio::test]
+async fn test_zatoshis_from_zec_overflow() {
+    // Test amount > MAX_MONEY rejected
+}
+
+#[tokio::test]
+async fn test_signed_message_hash_deterministic() {
+    // Test same message produces same hash
+}
+
+#[tokio::test]
+async fn test_signed_message_hash_different_messages() {
+    // Test different messages produce different hashes
+}
+
+#[tokio::test]
+async fn test_signed_message_hash_empty_message() {
+    // Test empty message handling
+}
+
+#[tokio::test]
+async fn test_transparent_pkh_from_taddr_valid() {
+    // Test extracting public key hash from transparent address
+}
+
+#[tokio::test]
+async fn test_transparent_pkh_from_taddr_invalid_address() {
+    // Test error with invalid address
+}
+
+#[tokio::test]
+async fn test_transparent_pkh_from_taddr_wrong_network() {
+    // Test error with wrong network address
+}
+
+#[tokio::test]
+async fn test_ensure_network_mainnet_to_mainnet() {
+    // Test mainnet address accepted on mainnet
+}
+
+#[tokio::test]
+async fn test_ensure_network_testnet_to_testnet() {
+    // Test testnet address accepted on testnet
+}
+
+#[tokio::test]
+async fn test_ensure_network_mainnet_to_testnet_rejected() {
+    // Test mainnet address rejected on testnet
+}
+
+#[tokio::test]
+async fn test_ensure_network_testnet_to_mainnet_rejected() {
+    // Test testnet address rejected on mainnet
+}
+
+#[tokio::test]
+async fn test_combine_balances_all_pools() {
+    // Test balance combination logic
+}
+
+#[tokio::test]
+async fn test_find_note_with_memo_sapling_pool() {
+    // Test finding notes in Sapling pool
+}
+
+#[tokio::test]
+async fn test_find_note_with_memo_orchard_pool() {
+    // Test finding notes in Orchard pool
+}
+
+#[tokio::test]
+async fn test_find_note_with_memo_partial_match_rejected() {
+    // Test partial memo match is not accepted (must be exact)
+}
+
+#[tokio::test]
+async fn test_wallet_sync_before_balance_query() {
+    // Test that balance queries trigger sync
+}
+
+#[tokio::test]
+async fn test_wallet_sync_before_funding_verification() {
+    // Test that funding verification triggers sync
+}
+
+#[tokio::test]
+async fn test_wallet_sync_before_sweep() {
+    // Test that sweep triggers sync
+}
+
+#[tokio::test]
+async fn test_transaction_broadcast_txid_mismatch_warning() {
+    // Test warning logged when broadcast txid != expected txid
+}
+
+#[tokio::test]
+async fn test_sweep_creates_multiple_transactions_if_needed() {
+    // Test handling of sweep that requires multiple transactions
+}
+
+#[tokio::test]
+async fn test_local_tx_prover_used_for_signing() {
+    // Test that LocalTxProver is used (not external service)
+}
+
+#[tokio::test]
+async fn test_spending_key_derived_for_transaction() {
+    // Test USK is derived for transaction signing
+}
+
+#[tokio::test]
+async fn test_ovk_policy_sender_used() {
+    // Test OvkPolicy::Sender is used for outgoing viewing
+}

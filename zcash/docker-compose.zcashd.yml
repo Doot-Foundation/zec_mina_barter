@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  zcashd-testnet:
+    image: electriccoinco/zcashd:latest
+    container_name: zcashd-testnet
+    ports:
+      - "18232:18232"  # RPC port
+      - "18233:18233"  # P2P port
+    volumes:
+      - zcash-testnet-data:/root/.zcash
+    environment:
+      - ZCASHD_NETWORK=testnet
+      - ZCASHD_RPCUSER=zcashrpc
+      - ZCASHD_RPCPASSWORD=your_secure_password_here_change_me
+    command: >
+      -testnet
+      -rpcuser=zcashrpc
+      -rpcpassword=your_secure_password_here_change_me
+      -rpcbind=0.0.0.0
+      -rpcallowip=172.0.0.0/8
+      -rpcallowip=127.0.0.1
+      -server=1
+      -rest=1
+      -experimentalfeatures
+      -lightwalletd
+      -printtoconsole
+      -debug=rpc
+      -addnode=testnet.z.cash
+      -i-am-aware-zcashd-will-be-replaced-by-zebrad-and-zallet-in-2025=1
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "zcash-cli", "-testnet", "getblockchaininfo"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+volumes:
+  zcash-testnet-data:
+    driver: local
+
+networks:
+  default:
+    name: zec-barter-network
+    driver: bridge

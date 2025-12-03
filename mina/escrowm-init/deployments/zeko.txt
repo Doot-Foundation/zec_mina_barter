@@ -1,0 +1,68 @@
+> escrowm@0.1.0 deploy:zeko
+> npm run build && node build/src/deploy-zeko.js
+
+
+> escrowm@0.1.0 build
+> tsc
+
+=== MinaEscrowPool Deployment to Zeko L2 Devnet ===
+
+Deployer: B62qod2DugDjy9Jxhzd56gFS7npN8pWhanxxb36MLPzDDqtzzDyBy5z
+Operator: B62qod2DugDjy9Jxhzd56gFS7npN8pWhanxxb36MLPzDDqtzzDyBy5z
+
+Connecting to Zeko L2 Devnet...
+✓ Connected
+
+Fetching deployer account...
+Deployer balance: 13770.99 MINA
+
+zkApp address: B62qpmaKEZsNGVmBktYp8XBDXctKxGYUXaqotvUPjJPJpNB2PWmSiPr
+zkApp private key: 
+
+Compiling MinaEscrowPool...
+✓ Compiled in 67.88s
+Verification key hash: 22864761706032301622072519114764436753115552554196304588950932055282409883417
+
+Deploying contract...
+Proving deployment transaction...
+Signing and sending...
+✓ Deployed in 6.52s
+Transaction hash: 5JvKo2Nvacur7TP9R5v4WFpbbgSAGJdtxTpGFGhkTESFcgw6CWYR
+
+Waiting for Zeko L2 confirmation (20s)...
+✓ Transaction confirmed
+
+Initializing operator...
+Transaction hash: 5JtceeebheFhf8Mr23G5NX6FygxK5Lgn5tXBc73G6nbHnajMbPZV
+✓ Operator initialized
+
+Verifying deployment...
+Contract deployed: B62qpmaKEZsNGVmBktYp8XBDXctKxGYUXaqotvUPjJPJpNB2PWmSiPr
+Operator set to: B62qod2DugDjy9Jxhzd56gFS7npN8pWhanxxb36MLPzDDqtzzDyBy5z
+
+=== Middleware Configuration ===
+Add to middleware/.env:
+
+MINA_NETWORK=zeko-devnet
+MINA_GRAPHQL_ENDPOINT=https://devnet.zeko.io/graphql
+MINA_POOL_ADDRESS=B62qpmaKEZsNGVmBktYp8XBDXctKxGYUXaqotvUPjJPJpNB2PWmSiPr
+OPERATOR_PRIVATE_KEY=
+
+✅ Deployment complete!
+
+=== Deployment Summary ===
+Contract Address: B62qpmaKEZsNGVmBktYp8XBDXctKxGYUXaqotvUPjJPJpNB2PWmSiPr
+Operator Address: B62qod2DugDjy9Jxhzd56gFS7npN8pWhanxxb36MLPzDDqtzzDyBy5z
+Deployer Address: B62qod2DugDjy9Jxhzd56gFS7npN8pWhanxxb36MLPzDDqtzzDyBy5z
+
+=== Explorer Links ===
+Contract: https://zekoscan.io/testnet/account/B62qpmaKEZsNGVmBktYp8XBDXctKxGYUXaqotvUPjJPJpNB2PWmSiPr
+Operator: https://zekoscan.io/testnet/account/B62qod2DugDjy9Jxhzd56gFS7npN8pWhanxxb36MLPzDDqtzzDyBy5z
+
+=== Next Steps ===
+1. Copy the middleware configuration above to middleware/.env
+2. Fund the operator account with some MINA for transaction fees
+3. Start the middleware: cd middleware && npm run build && npm start
+4. Monitor trades on ZekoScan explorer
+
+💡 Tip: Save these addresses and keys securely!
