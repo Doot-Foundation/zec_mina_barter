@@ -3,7 +3,7 @@
 This project enables atomic swaps between Mina and Zcash bridging a programmable smart
 contract chain with the most private cryptocurrency that doesn't support smart contracts.
 
-## Privacy-First Escrow for Zcash
+# Privacy-First Escrow for Zcash And Mina Protocol
 
 Zcash lacks programmable logic for escrow. Traditional solutions require wrapped tokens (wZEC) with
 trusted custodians or centralized exchanges that destroy privacy. This system uses ephemeral escrow

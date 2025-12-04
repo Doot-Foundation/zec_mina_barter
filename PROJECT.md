@@ -32,6 +32,8 @@ This protocol enables **atomic swaps** between MINA and ZEC using a hybrid archi
 │  • Monitors both chains every 15s                 │
 │  • Locks both sides when both funded              │
 │  • No database - queries blockchain               │
+│  • Settlement worker (proofs: 5-6 min)            │
+│  • Emergency unlock on ZEC lock failure           │
 └──────────────┬────────────────┬───────────────────┘
                │                │
                ▼                ▼
@@ -40,8 +42,10 @@ This protocol enables **atomic swaps** between MINA and ZEC using a hybrid archi
     │   (Zeko L2)      │  │  Per-trade       │
     │                  │  │  instances       │
     │  • Shared pool   │  │  • Port 9000+    │
-    │  • OffchainState │  │  • Shielded      │
-    │  • 1B trades     │  │  • Operator API  │
+    │  • OffchainState │  │  • Sequential    │
+    │  • 1B trades     │  │  • Shielded      │
+    │  • Settlement    │  │  • Unified token │
+    │  • Operator API  │  │  • Per-trade key │
     └──────────────────┘  └──────────────────┘
 ```
 
@@ -101,6 +105,28 @@ TradeData {
 - **Operator-Protected**: Requires bearer token for sensitive ops
 - **Full Balance Sweeps**: Always sends entire balance
 
+**Security Model**:
+
+⚠️ **SECURITY NOTE - POC SIMPLIFICATION**
+
+The current implementation uses a **unified operator token** (`this_is_escrowd_operator_token`) shared across all trades for rapid POC development. This is a deliberate simplification and **NOT production-ready**.
+
+**Current Security Architecture**:
+- **Unified Operator Token**: All escrowdv2 instances share `this_is_escrowd_operator_token`
+  - Protects `/set-in-transit` and `/send-target` endpoints
+  - Required in Authorization header: `Bearer this_is_escrowd_operator_token`
+- **Per-Trade API Key**: Each instance has unique random hex key
+  - Protects `/funding/shielded`, `/funding/transparent`, `/send-back`
+  - Passed in request body: `{"api_key": "3a7f9b2c8d1e4f5a..."}`
+  - Prevents cross-trade interference
+- **Port Isolation**: Sequential allocation (9000, 9001, 9002...) limits to 10,000 concurrent trades
+
+**Production Deployment Should**:
+- Generate unique cryptographic tokens per-trade
+- Store tokens in secure database (Supabase)
+- Implement token revocation capability
+- Add per-trade quotas and rate limiting
+
 **API Endpoints**:
 
 - `GET /address` - Get escrow address (shielded or transparent)
@@ -134,6 +160,9 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 - **Automatic Settlement**: Background worker for proofs
 - **Error Recovery**: Emergency unlock on ZEC lock failure
 - **Retry Logic**: 5 attempts with 60s backoff
+- **Shared Contracts**: Global zkApp compilation (compile once, use everywhere)
+- **Escrowdv2 Readiness**: 9-minute timeout for instance spawn + sync
+- **Oracle Integration**: Doot price feeds with 10% slippage tolerance
 
 **Process Flow**:
 
@@ -151,6 +180,33 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 - Supabase credentials (keypairs table)
 - Polling interval (default 15s)
 
+#### 4. Settlement Worker (Background Service)
+
+**Purpose**: Automated proof generation for OffchainState commitments
+
+**Technology**: Background process in middleware (separate from coordinator loop)
+
+**Key Features**:
+
+- **Automatic Detection**: Monitors pending OffchainState actions every 60s
+- **Proof Generation**: Creates ZK settlement proofs (~5-6 minutes)
+- **Non-Blocking**: Runs in background while coordinator handles new trades
+- **Anyone Can Settle**: Settlement is permissionless (not operator-only)
+- **Lock Prevention**: Prevents concurrent settlements with `isSettling` flag
+
+**Configuration**:
+- Interval: 60 seconds (configurable)
+- Minimum actions threshold: 1 (triggers on any pending action)
+- Timeout: None (proof generation takes as long as needed)
+
+**Process Flow**:
+
+1. Check for pending OffchainState actions
+2. If found and not already settling → trigger proof generation
+3. Generate settlement proof (~5-6 minutes)
+4. Submit `settle(proof)` transaction to MinaEscrowPool
+5. Wait for confirmation, then resume monitoring
+
 ---
 
 ## Trade Flow (Complete Example)
@@ -165,8 +221,12 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 
 1. Middleware generates UUID: `550e8400-e29b-41d4-a716-446655440000`
 2. Derives trade ID Field: `Poseidon(UUID)`
-3. Calculates escrowd port: `hash(UUID) % 10000 + 8000 = 8423`
-4. Starts escrowd instance at port 8423
+3. Allocates sequential port: `ESCROWD_BASE_PORT + trade_count = 9000` (first trade)
+4. Generates per-trade API key: Random 32-byte hex string (e.g., `3a7f9b2c8d1e4f5a...`)
+5. Spawns escrowd instance with:
+   - Port: 9000+ (sequential allocation)
+   - API_KEY: Per-trade random hex (e.g., `3a7f9b2c8d1e4f5a6b7c8d9e0f1a2b3c`)
+   - OPERATOR_TOKEN: Unified `this_is_escrowd_operator_token`
 
 ### Step-by-Step Flow
 
