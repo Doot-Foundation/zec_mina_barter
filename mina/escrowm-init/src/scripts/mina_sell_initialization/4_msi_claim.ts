@@ -75,7 +75,9 @@ async function main() {
 
   // Get balances before logging
   const bobPreBalance = parseFloat(await getBalance(accounts.bob.address));
-  const contractPreBalance = parseFloat(await getBalance(PublicKey.fromBase58(CONTRACT_ADDRESS)));
+  const contractPreBalance = parseFloat(
+    await getBalance(PublicKey.fromBase58(CONTRACT_ADDRESS))
+  );
 
   // Log all balances
   await logBalances(accounts, PublicKey.fromBase58(CONTRACT_ADDRESS));
@@ -121,7 +123,7 @@ async function main() {
   // STEP 9: Sign and Send Transaction
   // ============================================================================
 
-  logInfo('Signing transaction with Bob\'s key...');
+  logInfo("Signing transaction with Bob's key...");
   const sentTx = await txn.sign([accounts.bob.key]).send();
 
   logSection('✅ Transaction Sent');
@@ -145,7 +147,9 @@ async function main() {
 
   // Get balances after claim
   const bobPostBalance = parseFloat(await getBalance(accounts.bob.address));
-  const contractPostBalance = parseFloat(await getBalance(PublicKey.fromBase58(CONTRACT_ADDRESS)));
+  const contractPostBalance = parseFloat(
+    await getBalance(PublicKey.fromBase58(CONTRACT_ADDRESS))
+  );
 
   // Log all balances
   await logBalances(accounts, PublicKey.fromBase58(CONTRACT_ADDRESS));
@@ -161,13 +165,23 @@ async function main() {
   const expectedClaim = Number(state.amount) / 1e9;
   const feeAmount = FEE / 1e9;
 
-  console.log(`  Bob's balance change: ${bobChange > 0 ? '+' : ''}${bobChange.toFixed(9)} MINA`);
-  console.log(`  Contract balance change: ${contractChange > 0 ? '+' : ''}${contractChange.toFixed(9)} MINA`);
+  console.log(
+    `  Bob's balance change: ${bobChange > 0 ? '+' : ''}${bobChange.toFixed(
+      9
+    )} MINA`
+  );
+  console.log(
+    `  Contract balance change: ${
+      contractChange > 0 ? '+' : ''
+    }${contractChange.toFixed(9)} MINA`
+  );
 
-  console.log(`\n  Expected:`)
+  console.log(`\n  Expected:`);
   console.log(`    Bob receives: ${expectedClaim} MINA`);
   console.log(`    Bob pays fee: ${feeAmount} MINA`);
-  console.log(`    Bob net change: ~${(expectedClaim - feeAmount).toFixed(9)} MINA`);
+  console.log(
+    `    Bob net change: ~${(expectedClaim - feeAmount).toFixed(9)} MINA`
+  );
   console.log(`    Contract releases: ${expectedClaim} MINA`);
 
   // Verify the changes are approximately correct (allowing for small differences)
@@ -179,14 +193,22 @@ async function main() {
   console.log(`\n  Verification:`);
 
   if (bobChangeDiff < 0.5) {
-    logSuccess(`Bob's balance change matches expected (~${bobExpectedChange.toFixed(9)} MINA)`);
+    logSuccess(
+      `Bob's balance change matches expected (~${bobExpectedChange.toFixed(
+        9
+      )} MINA)`
+    );
   } else {
     logWarning(`Bob's balance change differs from expected`);
     console.log(`    Difference: ${bobChangeDiff.toFixed(9)} MINA`);
   }
 
   if (contractChangeDiff < 0.1) {
-    logSuccess(`Contract balance change matches expected (${contractExpectedChange.toFixed(9)} MINA)`);
+    logSuccess(
+      `Contract balance change matches expected (${contractExpectedChange.toFixed(
+        9
+      )} MINA)`
+    );
   } else {
     logWarning(`Contract balance change differs from expected`);
     console.log(`    Difference: ${contractChangeDiff.toFixed(9)} MINA`);
@@ -204,8 +226,10 @@ async function main() {
 
     if (!trade.isSome.toBoolean()) {
       logWarning('Trade not found in offchain state');
-      console.log('  This is EXPECTED if settlement hasn\'t occurred yet');
-      console.log('  The claim transaction was successful - continue to settlement');
+      console.log("  This is EXPECTED if settlement hasn't occurred yet");
+      console.log(
+        '  The claim transaction was successful - continue to settlement'
+      );
     } else {
       const tradeData = trade.value;
       logSuccess('Trade found in offchain state!');
@@ -217,75 +241,85 @@ async function main() {
       if (tradeData.completed.toBoolean()) {
         logSuccess('Trade marked as completed in offchain state');
       } else {
-        console.log('  Trade not yet marked as completed (requires settlement)');
+        console.log(
+          '  Trade not yet marked as completed (requires settlement)'
+        );
       }
     }
   } catch (error) {
     logWarning('Failed to query offchain state');
     console.log('  Error:', error);
-    console.log('  This may be expected if settlement hasn\'t occurred yet');
-    console.log('  The claim transaction was successful - continue to settlement');
+    console.log("  This may be expected if settlement hasn't occurred yet");
+    console.log(
+      '  The claim transaction was successful - continue to settlement'
+    );
   }
 
+  /// ALL BEING HANDLED BY THE MIDDLEWARE
   // ============================================================================
-  // STEP 14: Generate Settlement Proof
   // ============================================================================
-
-  logSection('⚡ Generating Settlement Proof');
-  console.log('  ⚠️  Settlement proof generation takes 5-6 minutes');
-  console.log('  This commits the claim to offchain state');
-  console.log('  Please be patient...\n');
-
-  logInfo('Starting proof generation...');
-  console.log(`  Started at: ${new Date().toLocaleTimeString()}`);
-
-  const proofStartTime = Date.now();
-  const settlementProof = await zkApp.offchainState.createSettlementProof();
-  const proofDuration = ((Date.now() - proofStartTime) / 1000 / 60).toFixed(2);
-
-  logSuccess(`Settlement proof generated in ${proofDuration} minutes`);
-  console.log(`  Completed at: ${new Date().toLocaleTimeString()}`);
-
   // ============================================================================
-  // STEP 15: Submit Settlement Transaction
+  // ============================================================================
   // ============================================================================
 
-  logSection('📤 Submitting Settlement Transaction');
+  // // STEP 14: Generate Settlement Proof
+  // // ============================================================================
 
-  // Fetch latest account state to ensure fresh nonce
-  logInfo('Fetching latest Operator account state...');
-  await fetchAccount({ publicKey: accounts.operator.address });
+  // logSection('⚡ Generating Settlement Proof');
+  // console.log('  ⚠️  Settlement proof generation takes 5-6 minutes');
+  // console.log('  This commits the claim to offchain state');
+  // console.log('  Please be patient...\n');
 
-  logInfo('Building settlement transaction...');
-  const settleTxn = await Mina.transaction(
-    { sender: accounts.operator.address, fee: FEE },
-    async () => {
-      await zkApp.settle(settlementProof);
-    }
-  );
+  // logInfo('Starting proof generation...');
+  // console.log(`  Started at: ${new Date().toLocaleTimeString()}`);
 
-  logSuccess('Transaction built');
+  // const proofStartTime = Date.now();
+  // const settlementProof = await zkApp.offchainState.createSettlementProof();
+  // const proofDuration = ((Date.now() - proofStartTime) / 1000 / 60).toFixed(2);
 
-  logInfo('Generating transaction proof...');
-  await settleTxn.prove();
-  logSuccess('Transaction proof generated');
+  // logSuccess(`Settlement proof generated in ${proofDuration} minutes`);
+  // console.log(`  Completed at: ${new Date().toLocaleTimeString()}`);
 
-  logInfo('Signing transaction with Operator key...');
-  const settleSentTx = await settleTxn.sign([accounts.operator.key]).send();
+  // // ============================================================================
+  // // STEP 15: Submit Settlement Transaction
+  // // ============================================================================
 
-  logSection('✅ Settlement Transaction Sent');
-  console.log(`  Transaction Hash: ${settleSentTx.hash}`);
-  console.log(`  Explorer: https://zekoscan.io/testnet/tx/${settleSentTx.hash}`);
+  // logSection('📤 Submitting Settlement Transaction');
 
-  updateTradeState('msi', { settleTxHash: settleSentTx.hash });
+  // // Fetch latest account state to ensure fresh nonce
+  // logInfo('Fetching latest Operator account state...');
+  // await fetchAccount({ publicKey: accounts.operator.address });
 
-  // ============================================================================
-  // STEP 16: Wait for Settlement Confirmation
-  // ============================================================================
+  // logInfo('Building settlement transaction...');
+  // const settleTxn = await Mina.transaction(
+  //   { sender: accounts.operator.address, fee: FEE },
+  //   async () => {
+  //     await zkApp.settle(settlementProof);
+  //   }
+  // );
 
-  await waitForConfirmation();
+  // logSuccess('Transaction built');
 
-  logSuccess('Claim settled on-chain - offchain state is now queryable');
+  // logInfo('Generating transaction proof...');
+  // await settleTxn.prove();
+  // logSuccess('Transaction proof generated');
+
+  // logInfo('Signing transaction with Operator key...');
+  // const settleSentTx = await settleTxn.sign([accounts.operator.key]).send();
+
+  // logSection('✅ Settlement Transaction Sent');
+  // console.log(`  Transaction Hash: ${settleSentTx.hash}`);
+  // console.log(`  Explorer: https://zekoscan.io/testnet/tx/${settleSentTx.hash}`);
+
+  // updateTradeState('msi', { settleTxHash: settleSentTx.hash });
+
+  // // ============================================================================
+  // // STEP 16: Wait for Settlement Confirmation
+  // // ============================================================================
+
+  // await waitForConfirmation();
+
+  // logSuccess('Claim settled on-chain - offchain state is now queryable');
 
   // ============================================================================
   // SUMMARY
@@ -293,15 +327,32 @@ async function main() {
 
   logSection('📊 Claim Summary');
   console.log(`  ✅ Trade ID: ${state.tradeId}`);
-  console.log(`  ✅ Claim transaction: ${sentTx.hash.slice(0, 10)}...${sentTx.hash.slice(-10)}`);
-  console.log(`  ✅ Settlement transaction: ${settleSentTx.hash.slice(0, 10)}...${settleSentTx.hash.slice(-10)}`);
+  console.log(
+    `  ✅ Claim transaction: ${sentTx.hash.slice(0, 10)}...${sentTx.hash.slice(
+      -10
+    )}`
+  );
+  // console.log(
+  //   `  ✅ Settlement transaction: ${settleSentTx.hash.slice(
+  //     0,
+  //     10
+  //   )}...${settleSentTx.hash.slice(-10)}`
+  // );
   console.log(`  ✅ Bob claimed: ${expectedClaim} MINA`);
-  console.log(`  ✅ Bob's net change: ${bobChange > 0 ? '+' : ''}${bobChange.toFixed(9)} MINA (including fees)`);
-  console.log(`  ✅ Contract released: ${Math.abs(contractChange).toFixed(9)} MINA`);
+  console.log(
+    `  ✅ Bob's net change: ${bobChange > 0 ? '+' : ''}${bobChange.toFixed(
+      9
+    )} MINA (including fees)`
+  );
+  console.log(
+    `  ✅ Contract released: ${Math.abs(contractChange).toFixed(9)} MINA`
+  );
   console.log(`  ✅ Offchain state settled and queryable`);
 
   logSection('🎯 Next Step');
-  console.log('  Run: node build/src/scripts/mina_sell_initialization/6_msi_verify_final.js');
+  console.log(
+    '  Run: node build/src/scripts/mina_sell_initialization/6_msi_verify_final.js'
+  );
   console.log('  This will perform final verification of the completed swap');
 }
 

@@ -1,5 +1,5 @@
 import { PublicKey } from 'o1js';
-import { config, getEscrowdPort } from './config.js';
+import { config } from './config.js';
 import { logger } from './logger.js';
 import { minaClient } from './mina-client.js';
 import { escrowdClient } from './escrowd-client.js';
@@ -7,6 +7,7 @@ import { CombinedTradeState, MinaTrade } from './types.js';
 import { fetchKeypairByMina, fetchKeypairByZcash } from './supabase-client.js';
 import { getCrossRate } from './oracle-client.js';
 import { portManager } from './port-manager.js';
+import { portAllocator } from './port-allocator.js';
 
 /**
  * Stateless coordinator for MINA ↔ ZEC atomic swaps
@@ -29,9 +30,9 @@ export class Coordinator {
   async initialize() {
     logger.info('Initializing coordinator...');
 
-    // Initialize Mina client
+    // Initialize Mina client (network setup only)
     await minaClient.initialize();
-    await minaClient.compile();
+    // Note: Compilation happens in main thread before this is called
 
     // Run clean slate recovery to unlock any stuck trades
     await this.cleanSlate();
@@ -166,7 +167,7 @@ export class Coordinator {
       const isPortAvailable = await portManager.isPortAvailable(minaTrade.tradeId);
 
       if (!isPortAvailable) {
-        const port = getEscrowdPort(minaTrade.tradeId);
+        const port = portAllocator.get(minaTrade.tradeId) || 0;
         portManager.logCollision(minaTrade.tradeId, port);
         return; // Skip this trade, retry in next poll cycle
       }

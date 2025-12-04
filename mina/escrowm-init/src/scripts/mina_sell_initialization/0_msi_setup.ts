@@ -70,28 +70,13 @@ async function main() {
   await logBalances(accounts, PublicKey.fromBase58(CONTRACT_ADDRESS));
 
   // ============================================================================
-  // STEP 5: Generate Mock ZEC Trade Data
-  // ============================================================================
-
-  logSection('🪙 Generating Mock ZEC Trade Data');
-
-  const minaAmount = 1.0; // 1 MINA deposit
-  const zecAmount = calculateMockZecAmount(minaAmount);
-
-  console.log(`  Alice will deposit: ${minaAmount} MINA`);
-  console.log(`  Bob will send (MOCK): ${zecAmount.toFixed(8)} ZEC`);
-
-  logMockExchangeRate(minaAmount);
-
-  // Generate mock ZEC trade (Bob selling ZEC to Alice)
-  const mockZecTrade = generateMockZecTrade(zecAmount);
-  logMockZecTrade(mockZecTrade, 'Bob → Alice');
-
-  // ============================================================================
-  // STEP 6: Initialize Trade State
+  // STEP 5: Initialize Trade State
   // ============================================================================
 
   logSection('📝 Initializing Trade State');
+
+  const minaAmount = 4.0; // 4 MINA deposit (meets 0.001 ZEC minimum at 3600:1 rate)
+  console.log(`  Alice will deposit: ${minaAmount} MINA`);
 
   const tradeState = initializeTradeState(
     accounts.alice.address.toBase58(), // Alice deposits MINA
@@ -99,21 +84,6 @@ async function main() {
     minaAmount,
     'msi' // mina_sell_initialization scenario
   );
-
-  // ============================================================================
-  // STEP 7: Save Mock ZEC Data to State
-  // ============================================================================
-
-  updateTradeState('msi', {
-    zecTradeData: {
-      sellerAddress: mockZecTrade.sellerAddress,
-      buyerAddress: mockZecTrade.buyerAddress,
-      amount: mockZecTrade.amount.toString(),
-      confirmations: mockZecTrade.confirmations,
-    },
-  });
-
-  logSuccess('Mock ZEC data saved to trade state');
 
   // ============================================================================
   // SUMMARY
@@ -128,7 +98,6 @@ async function main() {
   console.log(`  ✅ Bob (Claimant): ${accounts.bob.address.toBase58()}`);
   console.log(`  ✅ Operator: ${accounts.operator.address.toBase58()}`);
   console.log(`  ✅ Amount: ${minaAmount} MINA`);
-  console.log(`  ✅ Mock ZEC: ${zecAmount.toFixed(8)} ZEC`);
 
   logSection('🎯 Next Step');
   console.log('  Run: node build/src/scripts/mina_sell_initialization/1_msi_deposit.js');

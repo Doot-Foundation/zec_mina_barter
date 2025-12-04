@@ -19,8 +19,8 @@ export async function loadContracts() {
   }
 
   try {
-    // Import from built escrowm package
-    const module = await import('../../escrowm/build/src/index.js');
+    // Import from built escrowm-init package
+    const module = await import('../../mina/escrowm-init/build/src/index.js');
 
     contractModules = {
       MinaEscrowPool: module.MinaEscrowPool,
@@ -44,21 +44,22 @@ export async function loadContracts() {
  */
 export async function compileContracts() {
   if (isCompiled) {
-    logger.debug('Contracts already compiled');
+    logger.info('Contracts already compiled');
     return;
   }
 
   const modules = await loadContracts();
 
-  logger.info('Compiling MinaEscrowPool contract...');
+  logger.info('Compiling contracts...');
   const startTime = Date.now();
 
   try {
-    // Compile the main contract
-    await modules.MinaEscrowPool.compile();
-
-    // Compile offchain state
+    // CRITICAL ORDER: offchainState FIRST, then MinaEscrowPool
+    logger.info('Step 1/2: Compiling offchainState...');
     await modules.offchainState.compile();
+
+    logger.info('Step 2/2: Compiling MinaEscrowPool...');
+    await modules.MinaEscrowPool.compile();
 
     const duration = ((Date.now() - startTime) / 1000).toFixed(2);
     logger.info(`✓ Contracts compiled in ${duration}s`);
@@ -74,8 +75,14 @@ export async function compileContracts() {
  * Create contract instance
  */
 export async function createContractInstance(address: PublicKey) {
+  logger.info('  [createContractInstance] Loading contracts...');
   const modules = await loadContracts();
-  return new modules.MinaEscrowPool(address);
+  logger.info('  [createContractInstance] Creating MinaEscrowPool instance...');
+  const zkApp = new modules.MinaEscrowPool(address);
+  logger.info('  [createContractInstance] Setting offchainState contract instance...');
+  zkApp.offchainState.setContractInstance(zkApp); // REQUIRED
+  logger.info('  [createContractInstance] ✓ Instance ready');
+  return zkApp;
 }
 
 /**

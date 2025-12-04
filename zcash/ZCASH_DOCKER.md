@@ -49,6 +49,7 @@ curl ... http://127.0.0.1:18232/ | jq '.result'
 ## Blockchain Information
 
 ### getblockchaininfo
+
 Get blockchain sync status, chain info, and upgrade status.
 
 ```bash
@@ -58,6 +59,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Returns**:
+
 - `blocks`: Current block height
 - `headers`: Total headers downloaded
 - `verificationprogress`: Sync progress (0.0 to 1.0)
@@ -66,6 +68,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 - `upgrades`: Network upgrade status
 
 ### getbestblockhash
+
 Get the hash of the best (tip) block.
 
 ```bash
@@ -75,6 +78,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getblock
+
 Get block data by hash.
 
 ```bash
@@ -86,10 +90,12 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Params**:
+
 - `hash` (string): Block hash
 - `verbosity` (int, optional): 0=hex, 1=json (default), 2=json+tx details
 
 ### getblockcount
+
 Get current block height.
 
 ```bash
@@ -99,6 +105,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getblockhash
+
 Get block hash by height.
 
 ```bash
@@ -108,6 +115,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getchaintips
+
 Get all known blockchain tips (forks).
 
 ```bash
@@ -117,6 +125,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getdifficulty
+
 Get current mining difficulty.
 
 ```bash
@@ -130,6 +139,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ## Wallet Operations
 
 ### getwalletinfo
+
 Get wallet status and balance information.
 
 ```bash
@@ -139,6 +149,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Returns**:
+
 - `walletversion`: Wallet format version
 - `balance`: Total transparent balance
 - `unconfirmed_balance`: Unconfirmed transparent balance
@@ -147,6 +158,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 - `keypoolsize`: Available key pool size
 
 ### getbalance
+
 Get wallet balance.
 
 ```bash
@@ -162,10 +174,12 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Params**:
-- `account` (string, optional): Deprecated, use "*"
+
+- `account` (string, optional): Deprecated, use "\*"
 - `minconf` (int, optional): Minimum confirmations (default: 1)
 
 ### z_gettotalbalance
+
 Get total balance across all pools (transparent + shielded).
 
 ```bash
@@ -175,6 +189,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Returns**:
+
 ```json
 {
   "transparent": "0.00",
@@ -184,6 +199,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### listunspent
+
 List unspent transparent outputs.
 
 ```bash
@@ -193,11 +209,13 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Params**:
+
 - `minconf` (int, optional): Minimum confirmations (default: 1)
 - `maxconf` (int, optional): Maximum confirmations (default: 9999999)
 - `addresses` (array, optional): Filter by addresses
 
 ### listtransactions
+
 List wallet transactions.
 
 ```bash
@@ -213,6 +231,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### gettransaction
+
 Get detailed transaction information.
 
 ```bash
@@ -228,6 +247,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ## Address Management
 
 ### getnewaddress
+
 Generate new transparent address.
 
 ```bash
@@ -239,6 +259,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 **Returns**: `tmXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX` (testnet transparent address)
 
 ### z_getnewaddress
+
 Generate new shielded address.
 
 ```bash
@@ -259,10 +280,12 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Returns**:
+
 - Sapling: `ztestsapling1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
 - Orchard: `utest1XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
 
 ### getaddressesbyaccount
+
 List addresses by account (deprecated).
 
 ```bash
@@ -272,6 +295,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_listaddresses
+
 List all shielded addresses in wallet.
 
 ```bash
@@ -281,6 +305,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### validateaddress
+
 Validate and get info about transparent address.
 
 ```bash
@@ -292,6 +317,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_validateaddress
+
 Validate and get info about shielded address.
 
 ```bash
@@ -303,6 +329,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_exportviewingkey
+
 Export viewing key for shielded address.
 
 ```bash
@@ -314,6 +341,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_importviewingkey
+
 Import viewing key (read-only access).
 
 ```bash
@@ -329,6 +357,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ## Transaction Operations
 
 ### sendtoaddress
+
 Send ZEC to transparent address.
 
 ```bash
@@ -343,6 +372,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 **Returns**: Transaction ID (txid)
 
 ### sendmany
+
 Send to multiple transparent addresses in one transaction.
 
 ```bash
@@ -364,6 +394,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getrawtransaction
+
 Get raw transaction hex or decoded JSON.
 
 ```bash
@@ -381,6 +412,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### sendrawtransaction
+
 Broadcast raw transaction hex.
 
 ```bash
@@ -392,6 +424,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### decoderawtransaction
+
 Decode raw transaction hex to JSON.
 
 ```bash
@@ -403,6 +436,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### gettxout
+
 Get details about unspent transaction output.
 
 ```bash
@@ -419,6 +453,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ## Shielded Operations
 
 ### z_sendmany
+
 Send from any address type to multiple recipients (transparent/shielded).
 
 ```bash
@@ -450,6 +485,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Params**:
+
 - `fromaddress` (string): Source address
 - `amounts` (array): Recipients with amounts and optional memos
 - `minconf` (int, optional): Minimum confirmations (default: 1)
@@ -458,6 +494,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 **Returns**: Operation ID (use `z_getoperationstatus` to check)
 
 ### z_shieldcoinbase
+
 Shield transparent coinbase funds to shielded address.
 
 ```bash
@@ -469,6 +506,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_mergetoaddress
+
 Merge multiple UTXOs/notes to a single address.
 
 ```bash
@@ -490,6 +528,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Params**:
+
 - `fromaddresses` (array): Source addresses or ["ANY_TADDR", "ANY_SAPLING", "ANY_ORCHARD"]
 - `toaddress` (string): Destination address
 - `fee` (numeric, optional): Transaction fee
@@ -498,6 +537,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 - `memo` (string, optional): Hex memo
 
 ### z_listreceivedbyaddress
+
 List amounts received by shielded address.
 
 ```bash
@@ -511,6 +551,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 **Returns**: Array of received notes with amounts, memos, txids, and confirmations.
 
 ### z_getbalance
+
 Get balance for specific address.
 
 ```bash
@@ -522,6 +563,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_getoperationstatus
+
 Check status of async operations (z_sendmany, z_shieldcoinbase, etc).
 
 ```bash
@@ -538,12 +580,14 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 **Status values**:
+
 - `queued`: Waiting to execute
 - `executing`: Currently processing
 - `success`: Completed successfully (includes txid)
 - `failed`: Failed (includes error message)
 
 ### z_getoperationresult
+
 Get and remove operation results from memory.
 
 ```bash
@@ -553,6 +597,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_listoperationids
+
 List all operation IDs.
 
 ```bash
@@ -566,6 +611,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ## Network & Mining
 
 ### getnetworkinfo
+
 Get network connectivity information.
 
 ```bash
@@ -575,6 +621,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getpeerinfo
+
 Get information about connected peers.
 
 ```bash
@@ -584,6 +631,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getconnectioncount
+
 Get number of connections to other nodes.
 
 ```bash
@@ -593,6 +641,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### ping
+
 Send ping to all peers.
 
 ```bash
@@ -602,6 +651,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getmininginfo
+
 Get mining-related information.
 
 ```bash
@@ -611,6 +661,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getblocktemplate
+
 Get data needed to construct a block.
 
 ```bash
@@ -624,6 +675,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ## Utility Commands
 
 ### help
+
 List all available RPC commands or get help for specific command.
 
 ```bash
@@ -639,6 +691,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getinfo
+
 Get general node information (deprecated, use specific methods instead).
 
 ```bash
@@ -648,6 +701,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getmemoryinfo
+
 Get memory usage statistics.
 
 ```bash
@@ -657,6 +711,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### estimatefee
+
 Estimate fee per kilobyte for transaction to confirm in N blocks.
 
 ```bash
@@ -667,6 +722,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_getnotescount
+
 Count unspent notes in wallet.
 
 ```bash
@@ -676,6 +732,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### stop
+
 Stop the zcashd server.
 
 ```bash
@@ -689,6 +746,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ## Advanced Operations
 
 ### createrawtransaction
+
 Create raw transaction (transparent only).
 
 ```bash
@@ -710,6 +768,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### signrawtransaction
+
 Sign raw transaction.
 
 ```bash
@@ -721,6 +780,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_getpaymentdisclosure
+
 Get payment disclosure for transaction.
 
 ```bash
@@ -734,6 +794,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### z_validatepaymentdisclosure
+
 Validate payment disclosure.
 
 ```bash
@@ -745,6 +806,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getrawmempool
+
 Get all transactions in mempool.
 
 ```bash
@@ -754,6 +816,7 @@ curl --user zcashrpc:your_secure_password_here_change_me \
 ```
 
 ### getmempoolinfo
+
 Get mempool statistics.
 
 ```bash
@@ -863,18 +926,18 @@ watch -n 2 "curl -s --user zcashrpc:your_secure_password_here_change_me \
 
 Common RPC error codes:
 
-| Code | Message | Description |
-|------|---------|-------------|
-| -1 | RPC_MISC_ERROR | General error |
-| -3 | RPC_INVALID_ADDRESS_OR_KEY | Invalid address or key |
-| -4 | RPC_OUT_OF_MEMORY | Out of memory |
-| -5 | RPC_INVALID_PARAMETER | Invalid parameter |
-| -6 | RPC_WALLET_INSUFFICIENT_FUNDS | Insufficient funds |
-| -8 | RPC_WALLET_ERROR | Wallet error |
-| -13 | RPC_WALLET_KEYPOOL_RAN_OUT | Key pool exhausted |
-| -14 | RPC_WALLET_UNLOCK_NEEDED | Wallet unlock needed |
-| -17 | RPC_WALLET_INSUFFICIENT_FUNDS | Insufficient funds |
-| -28 | RPC_IN_WARMUP | Node still warming up |
+| Code | Message                       | Description            |
+| ---- | ----------------------------- | ---------------------- |
+| -1   | RPC_MISC_ERROR                | General error          |
+| -3   | RPC_INVALID_ADDRESS_OR_KEY    | Invalid address or key |
+| -4   | RPC_OUT_OF_MEMORY             | Out of memory          |
+| -5   | RPC_INVALID_PARAMETER         | Invalid parameter      |
+| -6   | RPC_WALLET_INSUFFICIENT_FUNDS | Insufficient funds     |
+| -8   | RPC_WALLET_ERROR              | Wallet error           |
+| -13  | RPC_WALLET_KEYPOOL_RAN_OUT    | Key pool exhausted     |
+| -14  | RPC_WALLET_UNLOCK_NEEDED      | Wallet unlock needed   |
+| -17  | RPC_WALLET_INSUFFICIENT_FUNDS | Insufficient funds     |
+| -28  | RPC_IN_WARMUP                 | Node still warming up  |
 
 ---
 
@@ -969,6 +1032,7 @@ Lightwalletd provides a lightweight interface for wallet applications to interac
 ### Architecture
 
 Lightwalletd acts as a bridge between wallet applications and zcashd:
+
 - Reads blockchain data from zcashd (via zcash.conf)
 - Provides compact block format for efficient sync
 - Serves gRPC API for wallet operations
@@ -987,6 +1051,7 @@ curl http://localhost:9068/status
 ```
 
 **Returns**:
+
 ```json
 {
   "saplingHeight": 2500000,
@@ -997,6 +1062,7 @@ curl http://localhost:9068/status
 ```
 
 **Fields**:
+
 - `saplingHeight`: Latest Sapling block height synced
 - `orchardHeight`: Latest Orchard block height synced (NU5+)
 - `chainName`: Network name ("main" or "test")
@@ -1011,6 +1077,7 @@ Lightwalletd implements the CompactTxStreamer service defined in [compact_format
 ### Core Wallet Methods
 
 #### GetLatestBlock
+
 Get the latest block height.
 
 ```bash
@@ -1018,6 +1085,7 @@ grpcurl -plaintext -d '{}' localhost:9067 cash.z.wallet.sdk.rpc.CompactTxStreame
 ```
 
 **Returns**:
+
 ```json
 {
   "height": "2500000",
@@ -1027,6 +1095,7 @@ grpcurl -plaintext -d '{}' localhost:9067 cash.z.wallet.sdk.rpc.CompactTxStreame
 ```
 
 #### GetBlock
+
 Get compact block by height.
 
 ```bash
@@ -1036,6 +1105,7 @@ grpcurl -plaintext -d '{"height": 2189042}' localhost:9067 cash.z.wallet.sdk.rpc
 **Returns**: CompactBlock with height, hash, time, and compact transactions.
 
 #### GetBlockRange (Streaming)
+
 Stream compact blocks within a height range.
 
 ```bash
@@ -1046,6 +1116,7 @@ grpcurl -plaintext -d '{"start": {"height": 2189000}, "end": {"height": 2189100}
 **Use case**: Initial wallet sync - downloads compact blocks for scanning.
 
 #### GetTransaction
+
 Get full transaction details by txid.
 
 ```bash
@@ -1056,6 +1127,7 @@ grpcurl -plaintext -d "{\"hash\": \"$TXID\"}" localhost:9067 cash.z.wallet.sdk.r
 **Returns**: Full raw transaction hex.
 
 #### SendTransaction
+
 Broadcast signed transaction to network.
 
 ```bash
@@ -1064,6 +1136,7 @@ grpcurl -plaintext -d "{\"data\": \"$RAW_HEX\"}" localhost:9067 cash.z.wallet.sd
 ```
 
 **Returns**:
+
 ```json
 {
   "errorCode": 0,
@@ -1072,6 +1145,7 @@ grpcurl -plaintext -d "{\"data\": \"$RAW_HEX\"}" localhost:9067 cash.z.wallet.sd
 ```
 
 **Error codes**:
+
 - `0`: Success
 - `-1`: Transaction rejected
 - `-8`: Insufficient fee
@@ -1079,6 +1153,7 @@ grpcurl -plaintext -d "{\"data\": \"$RAW_HEX\"}" localhost:9067 cash.z.wallet.sd
 ### Shielded Protocol Methods
 
 #### GetTreeState
+
 Get Sapling/Orchard commitment tree state at block height.
 
 ```bash
@@ -1086,6 +1161,7 @@ grpcurl -plaintext -d '{"height": 2189042}' localhost:9067 cash.z.wallet.sdk.rpc
 ```
 
 **Returns**:
+
 ```json
 {
   "network": "test",
@@ -1100,6 +1176,7 @@ grpcurl -plaintext -d '{"height": 2189042}' localhost:9067 cash.z.wallet.sdk.rpc
 **Use case**: Wallet sync requires tree state to construct valid proofs.
 
 #### GetSubtreeRoots (Streaming)
+
 Get Sapling/Orchard subtree roots for wallet sync.
 
 ```bash
@@ -1119,6 +1196,7 @@ grpcurl -plaintext -d '{"shieldedProtocol": "orchard", "startIndex": 0}' \
 **⚠️ Requires**: zcashd must run with `-experimentalfeatures` and `-lightwalletd` flags.
 
 #### GetAddressTxids (Streaming)
+
 Get transaction IDs for an address within height range.
 
 ```bash
@@ -1137,6 +1215,7 @@ grpcurl -plaintext -d "{
 ### Information Methods
 
 #### GetLightdInfo
+
 Get lightwalletd server information.
 
 ```bash
@@ -1144,6 +1223,7 @@ grpcurl -plaintext -d '{}' localhost:9067 cash.z.wallet.sdk.rpc.CompactTxStreame
 ```
 
 **Returns**:
+
 ```json
 {
   "version": "0.4.17",
@@ -1158,6 +1238,7 @@ grpcurl -plaintext -d '{}' localhost:9067 cash.z.wallet.sdk.rpc.CompactTxStreame
 ```
 
 #### Ping
+
 Check server liveness.
 
 ```bash
@@ -1165,6 +1246,7 @@ grpcurl -plaintext -d '{}' localhost:9067 cash.z.wallet.sdk.rpc.CompactTxStreame
 ```
 
 **Returns**:
+
 ```json
 {
   "duration": 1
@@ -1174,6 +1256,7 @@ grpcurl -plaintext -d '{}' localhost:9067 cash.z.wallet.sdk.rpc.CompactTxStreame
 ### Mempool Methods
 
 #### GetMempoolTx (Streaming)
+
 Get transaction from mempool.
 
 ```bash
@@ -1183,6 +1266,7 @@ grpcurl -plaintext -d '{}' localhost:9067 cash.z.wallet.sdk.rpc.CompactTxStreame
 **Returns**: Stream of pending transactions in mempool.
 
 #### GetMempoolStream (Streaming)
+
 Subscribe to mempool updates.
 
 ```bash
@@ -1318,6 +1402,7 @@ du -sh /home/botvenom/Desktop/work/web3/mina/projects/professional/Doot/protocol
 **Cause**: Zcashd hasn't synced enough blocks or missing required features.
 
 **Fix**:
+
 1. Ensure zcashd has `-experimentalfeatures` and `-lightwalletd` flags
 2. Wait for zcashd to sync more blocks
 3. Verify: `curl --user zcashrpc:pass --data-binary '{"jsonrpc":"1.0","id":"1","method":"z_gettreestate","params":["1"]}' http://127.0.0.1:18232/`
@@ -1327,6 +1412,7 @@ du -sh /home/botvenom/Desktop/work/web3/mina/projects/professional/Doot/protocol
 **Cause**: Zcashd missing required flags.
 
 **Fix**: Add to zcashd command:
+
 ```bash
 -experimentalfeatures
 -lightwalletd
@@ -1337,6 +1423,7 @@ du -sh /home/botvenom/Desktop/work/web3/mina/projects/professional/Doot/protocol
 **Cause**: Lightwalletd hasn't finished initial sync or zcashd not ready.
 
 **Fix**:
+
 1. Check zcashd is running: `docker ps | grep zcashd`
 2. Check zcashd sync: `curl --user zcashrpc:pass --data-binary '{"method":"getblockchaininfo"}' http://127.0.0.1:18232/`
 3. Wait for lightwalletd to sync with zcashd
@@ -1346,6 +1433,7 @@ du -sh /home/botvenom/Desktop/work/web3/mina/projects/professional/Doot/protocol
 **Cause**: Lightwalletd not running or network misconfiguration.
 
 **Fix**:
+
 1. Check container: `docker ps | grep lightwalletd`
 2. Check network mode: `docker inspect lightwalletd --format='{{.HostConfig.NetworkMode}}'` (should be "host")
 3. Check logs: `docker logs lightwalletd`
@@ -1375,6 +1463,24 @@ grpcurl --version
 ```bash
 grpcurl -plaintext localhost:9067 list
 grpcurl -plaintext localhost:9067 list cash.z.wallet.sdk.rpc.CompactTxStreamer
+```
+
+### Creating account within the main wallet
+
+```bash
+curl -u zcashrpc:your_secure_password_here_change_me \
+--data-binary '{"jsonrpc":"1.0","id":"a1","method":"z_getnewaccount","params":[]}' \
+-H 'content-type: text/plain;' \
+http://127.0.0.1:18232/ | jq '{result,error}'
+```
+
+### Get account information
+
+```bash
+curl -u zcashrpc:your_secure_password_here_change_me \
+--data-binary "{\"jsonrpc\":\"1.0\",\"id\":\"addr\",\"method\":\"z_getaddressforaccount\",\"params\":[0]}" \
+-H 'content-type: text/plain;' \
+http://127.0.0.1:18232/ | jq '{result,error}'
 ```
 
 ---

@@ -3,30 +3,23 @@ import {
   setupNetwork,
   loadTestAccounts,
   compileContract,
-  getContractInstance,
-  logBalances,
-  waitForConfirmation,
   logHeader,
   logSection,
   logSuccess,
-  logInfo,
-  logWarning,
-  FEE,
-  CONTRACT_ADDRESS,
 } from '../shared/test-utils.js';
 import {
   loadTradeState,
   updateTradeState,
   displayTradeState,
+  cleanupFailedTrade,
 } from '../shared/state-manager.js';
 import {
-  generateMockZecTxHash,
-  confirmMockZecTrade,
-  logMockZecTrade,
-  generateMockEscrowdv2State,
-  logMockEscrowdv2State,
-  verifyMockEscrowdv2StateForLock,
-} from '../shared/mock-zec.js';
+  ensureMiddlewareRunning,
+  spawnEscrowdInstance,
+  getEscrowdStatus,
+  promptUserToFundZec,
+  calculateZecFromOracle,
+} from '../shared/real-zec.js';
 
 /**
  * Scenario 2 - ZEC Sell Initialization: Lock Trade
@@ -74,259 +67,176 @@ async function main() {
   displayTradeState('zsi');
 
   // ============================================================================
-  // STEP 5: Simulate ZEC Confirmation (MOCK)
+  // STEP 5: Spawn escrowdv2 Instance via Middleware
   // ============================================================================
 
-  logSection('🪙 MOCK: Simulating ZEC Transaction Confirmation');
-  console.log('  In real scenario: Bob would send ZEC to Alice');
-  console.log('  For testing: We mock ZEC transaction confirmation');
-
-  if (!state.zecTradeData) {
-    console.error('❌ No ZEC trade data found in state');
-    process.exit(1);
-  }
-
-  // Add mock tx hash and confirmations
-  const mockZecTxHash = generateMockZecTxHash();
-  const confirmedZecTrade: import('../shared/mock-zec.js').MockZecTradeData = {
-    sellerAddress: state.zecTradeData.sellerAddress,
-    buyerAddress: state.zecTradeData.buyerAddress,
-    amount: BigInt(state.zecTradeData.amount), // Convert string to bigint
-    txHash: mockZecTxHash,
-    confirmations: 6, // Standard safe confirmation count
-  };
-
-  logMockZecTrade(confirmedZecTrade, 'Bob → Alice (CONFIRMED)');
-
-  console.log('  ⚠️  MOCK ZEC Confirmation Details:');
-  console.log(`  Tx Hash: ${mockZecTxHash}`);
-  console.log(`  Confirmations: 6`);
-  console.log(`  Status: ✅ Confirmed (MOCKED)`);
-
-  // ============================================================================
-  // STEP 5A: Verify escrowdv2 State (MOCK)
-  // ============================================================================
-
-  logSection('🔍 Verifying Mock escrowdv2 State');
-  console.log('  In real scenario: Operator would query ZEC escrow contract');
-  console.log('  For testing: We simulate escrowdv2 state checks');
-
-  // Generate mock escrowdv2 state (simulates querying the ZEC escrow)
-  const escrowdv2State = generateMockEscrowdv2State(mockZecTxHash, 6);
-  logMockEscrowdv2State(escrowdv2State, 'Before MINA Lock');
-
-  // Verify state is valid for locking MINA side
-  const verification = verifyMockEscrowdv2StateForLock(escrowdv2State);
-
-  if (!verification.valid) {
-    console.error(`\n❌ escrowdv2 State Invalid for Locking`);
-    console.error(`  Reason: ${verification.reason}`);
-    console.error(`  Cannot proceed with MINA lock until ZEC escrow is ready`);
-    process.exit(1);
-  }
-
-  logSuccess('escrowdv2 state verified - ready to lock MINA side');
-  console.log('  ✅ ZEC deposited and confirmed');
-  console.log('  ✅ No refund detected');
-  console.log('  ✅ Safe to proceed with MINA lock');
-
-  // Update state with mock ZEC confirmation
-  updateTradeState('zsi', {
-    zecTradeData: {
-      sellerAddress: confirmedZecTrade.sellerAddress,
-      buyerAddress: confirmedZecTrade.buyerAddress,
-      amount: confirmedZecTrade.amount.toString(), // Convert bigint to string for JSON
-      txHash: confirmedZecTrade.txHash,
-      confirmations: confirmedZecTrade.confirmations,
-    },
-  });
-
-  logSuccess('Mock ZEC transaction confirmed');
-
-  // ============================================================================
-  // STEP 6: Pre-Lock Balances
-  // ============================================================================
-
-  logSection('💰 Pre-Lock Balances');
-  await logBalances(accounts, PublicKey.fromBase58(CONTRACT_ADDRESS));
-
-  // ============================================================================
-  // STEP 7: Lock Trade
-  // ============================================================================
-
-  logSection('🔒 Locking Trade for Bob');
-
-  const zkApp = getContractInstance();
-  const tradeIdField = Field.from(state.tradeIdField);
-
-  console.log(`  Trade ID: ${state.tradeId}`);
-  console.log(`  Operator: ${accounts.operator.address.toBase58()}`);
-  console.log(`  Claimant (Bob): ${accounts.bob.address.toBase58()}`);
-  console.log(`  Amount Locked: ${Number(state.amount) / 1e9} MINA`);
-  console.log(`  Fee: ${FEE / 1e9} MINA`);
-
-  logInfo('Building lock transaction...');
-
-  const txn = await Mina.transaction(
-    { sender: accounts.operator.address, fee: FEE },
-    async () => {
-      await zkApp.lockTrade(tradeIdField, accounts.bob.address);
-    }
-  );
-
-  logSuccess('Transaction built');
-
-  // ============================================================================
-  // STEP 8: Prove Transaction
-  // ============================================================================
-
-  logInfo('Generating transaction proof (this may take a moment)...');
-  await txn.prove();
-  logSuccess('Proof generated');
-
-  // ============================================================================
-  // STEP 9: Sign and Send Transaction
-  // ============================================================================
-
-  logInfo('Signing transaction with Operator key...');
-  const sentTx = await txn.sign([accounts.operator.key]).send();
-
-  logSection('✅ Transaction Sent');
-  console.log(`  Transaction Hash: ${sentTx.hash}`);
-  console.log(`  Explorer: https://zekoscan.io/testnet/tx/${sentTx.hash}`);
-
-  // Update state with lock transaction hash
-  updateTradeState('zsi', { lockTxHash: sentTx.hash });
-
-  // ============================================================================
-  // STEP 10: Wait for Confirmation
-  // ============================================================================
-
-  await waitForConfirmation();
-
-  // ============================================================================
-  // STEP 11: Post-Lock Balances
-  // ============================================================================
-
-  logSection('💰 Post-Lock Balances');
-  await logBalances(accounts, PublicKey.fromBase58(CONTRACT_ADDRESS));
-
-  // ============================================================================
-  // STEP 12: Verify Lock Status
-  // ============================================================================
-
-  logSection('🔍 Verifying Lock Status');
-  console.log('  Attempting to query offchain state...');
+  logSection('🚀 Spawning escrowdv2 Instance');
 
   try {
-    const trade = await zkApp.offchainState.fields.trades.get(tradeIdField);
+    // Check middleware is running
+    await ensureMiddlewareRunning();
+    logSuccess('Middleware is accessible');
 
-    if (!trade.isSome.toBoolean()) {
-      logWarning('Trade not yet visible in offchain state (expected)');
-      console.log('  ℹ️  The lock transaction was successful');
-      console.log('  ℹ️  Settlement hasn\'t occurred yet - will happen next in this script');
-      console.log('  ℹ️  After settlement, the locked state will be queryable');
-    } else {
-      const tradeData = trade.value;
-      logSuccess('Trade found in offchain state!');
+    // Use operator token (consistent across all trades)
+    const apiKey =
+      process.env.ESCROWD_OPERATOR_TOKEN || 'this_is_escrowd_operator_token';
+    console.log(`  Using Operator Token: ${apiKey}`);
 
-      console.log(`  Locked (inTransit): ${tradeData.inTransit.toBoolean()}`);
-      console.log(`  Claimant: ${tradeData.claimant.toBase58()}`);
+    // Spawn escrowdv2 instance via middleware API
+    console.log(`  Calling middleware: POST /api/spawn-escrowd`);
+    const spawnResult = await spawnEscrowdInstance(state.tradeId, apiKey);
 
-      // Verify lock status
-      const isLocked = tradeData.inTransit.toBoolean();
-      const claimantMatches = tradeData.claimant.toBase58() === accounts.bob.address.toBase58();
-
-      if (isLocked && claimantMatches) {
-        logSuccess('Lock verified: Trade is locked for Bob');
-      } else {
-        logWarning('Lock status unexpected');
-        console.log(`  Expected: locked=true, claimant=Bob`);
-        console.log(`  Actual: locked=${isLocked}, claimant=${tradeData.claimant.toBase58()}`);
-      }
+    if (!spawnResult.success) {
+      throw new Error('Failed to spawn escrowdv2 instance');
     }
-  } catch (error) {
-    logWarning('Could not query offchain state (expected)');
-    console.log('  Error:', error);
-    console.log('  ℹ️  This is expected - settlement hasn\'t occurred yet');
-    console.log('  ℹ️  Settlement will happen next in this script');
-    console.log('  ℹ️  The lock transaction was successful');
+
+    console.log(`  ✅ escrowdv2 spawned on port: ${spawnResult.port}`);
+    console.log(`  ✅ ZEC Escrow Address: ${spawnResult.address}`);
+
+    // Update state with escrowdv2 details
+    updateTradeState('zsi', {
+      escrowdApiKey: apiKey,
+      escrowdPort: spawnResult.port,
+      escrowdAddress: spawnResult.address,
+    });
+  } catch (err: any) {
+    console.error('❌ Failed to spawn escrowdv2:', err.message);
+    const currentState = loadTradeState('zsi');
+    await cleanupFailedTrade('zsi', currentState);
+    process.exit(1);
   }
 
   // ============================================================================
-  // STEP 13: Generate Settlement Proof
+  // STEP 6: User Funds ZEC Escrow (MANUAL STEP)
   // ============================================================================
 
-  logSection('⚡ Generating Settlement Proof');
-  console.log('  ⚠️  Settlement proof generation takes 5-6 minutes');
-  console.log('  This commits the lock to offchain state');
-  console.log('  Please be patient...\n');
+  logSection('🪙 Funding ZEC Escrow');
 
-  logInfo('Starting proof generation...');
-  console.log(`  Started at: ${new Date().toLocaleTimeString()}`);
+  try {
+    const currentState = loadTradeState('zsi');
 
-  const proofStartTime = Date.now();
-  const settlementProof = await zkApp.offchainState.createSettlementProof();
-  const proofDuration = ((Date.now() - proofStartTime) / 1000 / 60).toFixed(2);
+    // Calculate expected ZEC amount from oracle
+    const minaAmount = Number(currentState.amount) / 1e9; // Convert from nanomina
+    const expectedZec = await calculateZecFromOracle(minaAmount);
 
-  logSuccess(`Settlement proof generated in ${proofDuration} minutes`);
-  console.log(`  Completed at: ${new Date().toLocaleTimeString()}`);
+    console.log(`  MINA Amount: ${minaAmount} MINA`);
+    console.log(`  Expected ZEC: ${expectedZec.toFixed(8)} ZEC`);
+    console.log(
+      `  Exchange Rate: ${(expectedZec / minaAmount).toFixed(8)} ZEC per MINA`
+    );
 
-  // ============================================================================
-  // STEP 14: Submit Settlement Transaction
-  // ============================================================================
+    // Prompt user to send ZEC (uses account 1 for ZSI)
+    await promptUserToFundZec(
+      currentState.escrowdAddress!,
+      expectedZec,
+      currentState.escrowdApiKey!,
+      1, // Use zcashd account 1 (different from MSI which uses 0)
+      currentState.escrowdPort!
+    );
 
-  logSection('📤 Submitting Settlement Transaction');
+    // Verify funding was successful
+    const status = await getEscrowdStatus(
+      currentState.tradeId,
+      currentState.escrowdPort!
+    );
 
-  // Fetch latest account state to ensure fresh nonce
-  logInfo('Fetching latest Operator account state...');
-  await fetchAccount({ publicKey: accounts.operator.address });
-
-  logInfo('Building settlement transaction...');
-  const settleTxn = await Mina.transaction(
-    { sender: accounts.operator.address, fee: FEE },
-    async () => {
-      await zkApp.settle(settlementProof);
+    if (!status.verified) {
+      throw new Error('ZEC funding verification failed');
     }
-  );
 
-  logSuccess('Transaction built');
+    console.log(`  ✅ ZEC Escrow Verified!`);
+    console.log(`  Origin Address: ${status.origin_address}`);
+    console.log(`  Received Amount: ${status.received_amount} zatoshis`);
 
-  logInfo('Generating transaction proof...');
-  await settleTxn.prove();
-  logSuccess('Transaction proof generated');
-
-  logInfo('Signing transaction with Operator key...');
-  const settleSentTx = await settleTxn.sign([accounts.operator.key]).send();
-
-  logSection('✅ Settlement Transaction Sent');
-  console.log(`  Transaction Hash: ${settleSentTx.hash}`);
-  console.log(`  Explorer: https://zekoscan.io/testnet/tx/${settleSentTx.hash}`);
+    // Update state
+    updateTradeState('zsi', {
+      escrowdVerified: true,
+      escrowdOriginAddress: status.origin_address,
+    });
+  } catch (err: any) {
+    console.error('❌ ZEC funding failed:', err.message);
+    const currentState = loadTradeState('zsi');
+    await cleanupFailedTrade('zsi', currentState);
+    process.exit(1);
+  }
 
   // ============================================================================
-  // STEP 15: Wait for Settlement Confirmation
+  // STEP 7: Wait for Middleware to Lock Both Sides
   // ============================================================================
 
-  await waitForConfirmation();
+  logSection('🔒 Waiting for Middleware to Lock Trade');
 
-  logSuccess('Lock settled on-chain - offchain state is now queryable');
+  console.log('  ℹ️  Middleware polling will detect:');
+  console.log('     1. MINA deposit confirmed (from step 1)');
+  console.log('     2. ZEC escrow verified (just completed)');
+  console.log('     3. Automatically lock both sides');
+  console.log('');
+  console.log('  ⏳ Polling every 5 seconds... (max 5 minutes)');
+
+  try {
+    const currentState = loadTradeState('zsi');
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutes
+
+    while (attempts < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, 5000)); // 5 seconds
+      attempts++;
+
+      // Check escrowdv2 status
+      const status = await getEscrowdStatus(
+        currentState.tradeId,
+        currentState.escrowdPort!
+      );
+
+      if (status.in_transit) {
+        console.log(`\n  ✅ Trade locked by middleware!`);
+        updateTradeState('zsi', { escrowdInTransit: true });
+        break;
+      }
+
+      process.stdout.write(`  ⏳ Attempt ${attempts}/${maxAttempts}...\r`);
+    }
+
+    if (attempts >= maxAttempts) {
+      throw new Error('Timeout waiting for middleware to lock trade');
+    }
+  } catch (err: any) {
+    console.error('❌ Lock coordination failed:', err.message);
+    const currentState = loadTradeState('zsi');
+    await cleanupFailedTrade('zsi', currentState);
+    process.exit(1);
+  }
+
+  logSuccess('Both sides locked atomically by middleware!');
 
   // ============================================================================
   // SUMMARY
   // ============================================================================
 
+  const finalState = loadTradeState('zsi');
+
   logSection('📊 Lock Summary');
-  console.log(`  ✅ Trade ID: ${state.tradeId}`);
-  console.log(`  ✅ Lock transaction: ${sentTx.hash.slice(0, 10)}...${sentTx.hash.slice(-10)}`);
-  console.log(`  ✅ Settlement transaction: ${settleSentTx.hash.slice(0, 10)}...${settleSentTx.hash.slice(-10)}`);
-  console.log(`  ✅ Claimant set to: Bob (${accounts.bob.address.toBase58().slice(0, 20)}...)`);
-  console.log(`  ✅ Amount locked: ${Number(state.amount) / 1e9} MINA`);
-  console.log(`  ✅ Offchain state settled and queryable`);
-  console.log(`  🪙 MOCK: ZEC transaction confirmed (${mockZecTxHash.slice(0, 10)}...)`);
+  console.log(`  ✅ Trade ID: ${finalState.tradeId}`);
+  console.log(`  ✅ escrowdv2 Port: ${finalState.escrowdPort}`);
+  console.log(
+    `  ✅ escrowdv2 Address: ${finalState.escrowdAddress?.slice(
+      0,
+      20
+    )}...${finalState.escrowdAddress?.slice(-20)}`
+  );
+  console.log(
+    `  ✅ ZEC Verified: ${finalState.escrowdVerified ? 'Yes' : 'No'}`
+  );
+  console.log(`  ✅ In Transit: ${finalState.escrowdInTransit ? 'Yes' : 'No'}`);
+  console.log(`  ✅ Amount: ${Number(finalState.amount) / 1e9} MINA`);
+  console.log(`  ✅ Real ZEC integration complete!`);
 
   logSection('🎯 Next Step');
-  console.log('  Run: node build/src/scripts/zec_sell_initialization/4_zsi_claim.js');
-  console.log('  This will execute Bob\'s claim of the locked MINA');
+  console.log(
+    '  Run: node build/src/scripts/zec_sell_initialization/4_zsi_claim.js'
+  );
+  console.log("  This will execute Bob's claim of the locked MINA");
+  console.log('  After claim, middleware will automatically send ZEC to Bob');
 }
 
 main()

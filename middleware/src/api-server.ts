@@ -1,8 +1,60 @@
 import express, { Request, Response } from 'express';
-import { config, getEscrowdPort } from './config.js';
+import { Field, Poseidon } from 'o1js';
+import { config } from './config.js';
 import { logger } from './logger.js';
 import { escrowdManager } from './escrowd-manager.js';
 import { escrowdClient } from './escrowd-client.js';
+import { minaClient } from './mina-client.js';
+import { portAllocator } from './port-allocator.js';
+
+/**
+ * Wait for escrowdv2 instance to be ready by polling its HTTP endpoint
+ * @param port - The port the escrowdv2 instance is running on
+ * @param timeoutMs - Maximum time to wait in milliseconds (default: 540000 = 9 minutes)
+ * @returns Promise that resolves when ready, rejects on timeout
+ */
+async function waitForEscrowdReady(port: number, timeoutMs: number = 540000): Promise<void> {
+  const startTime = Date.now();
+  let attempt = 0;
+  let delay = 1000; // Start with 1 second
+
+  logger.info(`[waitForEscrowdReady] Waiting for escrowdv2 on port ${port} to be ready...`);
+  logger.info(`[waitForEscrowdReady] Timeout: ${timeoutMs / 1000}s (${timeoutMs / 60000} minutes)`);
+
+  while (Date.now() - startTime < timeoutMs) {
+    attempt++;
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+    try {
+      // Try to fetch the /address endpoint
+      const response = await fetch(`http://127.0.0.1:${port}/address`, {
+        signal: AbortSignal.timeout(5000), // 5s timeout per request
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        logger.info(`[waitForEscrowdReady] ✓ escrowdv2 ready after ${elapsed}s (${attempt} attempts)`);
+        logger.info(`[waitForEscrowdReady] Address: ${data.address}`);
+        return;
+      }
+    } catch (error) {
+      // Connection refused or timeout - escrowdv2 still compiling
+      logger.debug(`[waitForEscrowdReady] Attempt ${attempt} failed after ${elapsed}s (will retry in ${delay / 1000}s)`);
+    }
+
+    // Wait before next attempt
+    await new Promise((resolve) => setTimeout(resolve, delay));
+
+    // Exponential backoff: 1s → 2s → 4s → 8s → 10s (max)
+    delay = Math.min(delay * 2, 10000);
+  }
+
+  // Timeout reached
+  const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  throw new Error(
+    `Timeout waiting for escrowdv2 on port ${port} to be ready after ${totalElapsed}s (${attempt} attempts)`
+  );
+}
 
 /**
  * Express API server for middleware control
@@ -69,7 +121,32 @@ export class ApiServer {
         }
 
         // Spawn instance
+        logger.info(`[spawn-escrowd] Spawning escrowdv2 for trade ${tradeId}...`);
         const result = await escrowdManager.spawn(tradeId, apiKey);
+
+        if (!result.success) {
+          logger.error(`[spawn-escrowd] Failed to spawn: ${result.message}`);
+          return res.json(result);
+        }
+
+        // Wait for escrowdv2 to be ready (9 minute timeout for first compile)
+        logger.info(`[spawn-escrowd] Spawned on port ${result.port}, waiting for readiness...`);
+
+        try {
+          await waitForEscrowdReady(result.port!, 540000); // 9 minutes
+          logger.info(`[spawn-escrowd] ✓ escrowdv2 ready on port ${result.port}`);
+        } catch (error) {
+          logger.error(`[spawn-escrowd] Readiness check failed: ${error}`);
+          // Kill the instance since it didn't start properly
+          await escrowdManager.kill(tradeId);
+          return res.status(500).json({
+            success: false,
+            error: `escrowdv2 failed to start within timeout: ${error}`,
+          });
+        }
+
+        // Register trade for tracking
+        minaClient.registerTrade(tradeId);
 
         res.json(result);
 
@@ -86,7 +163,14 @@ export class ApiServer {
     this.app.get('/api/escrowd/:tradeId/status', async (req: Request, res: Response) => {
       try {
         const { tradeId } = req.params;
-        const port = getEscrowdPort(tradeId);
+        const port = portAllocator.get(tradeId);
+
+        if (!port) {
+          return res.status(404).json({
+            success: false,
+            error: 'Trade not found or port not allocated',
+          });
+        }
 
         // Query the instance
         const status = await escrowdClient.getStatus(tradeId);
