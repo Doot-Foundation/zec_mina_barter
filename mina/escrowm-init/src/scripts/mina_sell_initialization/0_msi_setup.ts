@@ -75,7 +75,7 @@ async function main() {
 
   logSection('📝 Initializing Trade State');
 
-  const minaAmount = 1.0; // 1 MINA deposit
+  const minaAmount = 4.0; // 4 MINA deposit (meets 0.001 ZEC minimum at 3600:1 rate)
   console.log(`  Alice will deposit: ${minaAmount} MINA`);
 
   const tradeState = initializeTradeState(

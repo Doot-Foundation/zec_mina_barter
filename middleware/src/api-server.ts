@@ -3,6 +3,7 @@ import { config, getEscrowdPort } from './config.js';
 import { logger } from './logger.js';
 import { escrowdManager } from './escrowd-manager.js';
 import { escrowdClient } from './escrowd-client.js';
+import { minaClient } from './mina-client.js';
 
 /**
  * Express API server for middleware control
@@ -70,6 +71,11 @@ export class ApiServer {
 
         // Spawn instance
         const result = await escrowdManager.spawn(tradeId, apiKey);
+
+        // Register trade for tracking if spawn succeeded
+        if (result.success) {
+          minaClient.registerTrade(tradeId);
+        }
 
         res.json(result);
 

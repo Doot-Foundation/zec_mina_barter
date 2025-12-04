@@ -29,9 +29,9 @@ export class Coordinator {
   async initialize() {
     logger.info('Initializing coordinator...');
 
-    // Initialize Mina client
+    // Initialize Mina client (network setup only)
     await minaClient.initialize();
-    await minaClient.compile();
+    // Note: Compilation happens in main thread before this is called
 
     // Run clean slate recovery to unlock any stuck trades
     await this.cleanSlate();

@@ -4,6 +4,7 @@ import { coordinator } from './coordinator.js';
 import { settlementWorker } from './settlement-worker.js';
 import { apiServer } from './api-server.js';
 import { escrowdManager } from './escrowd-manager.js';
+import { compileAndCreateContracts } from './shared-contracts.js';
 
 /**
  * Main entry point for the middleware coordinator
@@ -18,7 +19,14 @@ async function main() {
     validateConfig();
     logger.info('');
 
-    // Initialize coordinator
+    // CRITICAL: Compile offchainState + MinaEscrowPool + create zkApp + attach
+    // ALL IN ONE SINGLE FUNCTION IN MAIN THREAD
+    logger.info('[Main] Compiling and creating contracts in main thread...');
+    await compileAndCreateContracts(config.mina.poolAddress);
+    logger.info('[Main] ✓ Contracts compiled and zkApp ready');
+    logger.info('');
+
+    // Initialize coordinator (uses global contracts)
     await coordinator.initialize();
     logger.info('');
 
@@ -29,7 +37,7 @@ async function main() {
     // Start monitoring
     coordinator.start();
 
-    // Start settlement worker
+    // Start settlement worker (uses global zkApp)
     logger.info('');
     await settlementWorker.start();
 

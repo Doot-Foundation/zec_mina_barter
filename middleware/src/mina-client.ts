@@ -1,25 +1,15 @@
-import { Mina, PublicKey, Field, fetchAccount, AccountUpdate } from 'o1js';
+import { Mina, PublicKey, Field } from 'o1js';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { MinaTrade } from './types.js';
-import {
-  loadContracts,
-  compileContracts,
-  createContractInstance,
-  getContractModules,
-  isContractsCompiled,
-} from './contract-imports.js';
-// @ts-ignore: offchain-state helpers are internal to o1js and ship without typings
-import { fetchMerkleMap } from './o1js-internal.js';
+import { getGlobalZkApp, getContractModules, fetchAccountWithRetry } from './shared-contracts.js';
 
 /**
  * Client for interacting with MinaEscrowPool contract
  */
 export class MinaClient {
   private network: any = null;
-  private zkApp: any = null;
-  private readonly treeHeight = 31; // logTotalCapacity=30 -> height 31
-  private cachedModules: any = null;
+  private trackedTradeIds: Set<string> = new Set(); // Simple in-memory tracking
 
   /**
    * Initialize network connection
@@ -38,40 +28,17 @@ export class MinaClient {
   }
 
   /**
-   * Compile contract (do once at startup)
-   * Note: In production, this would use pre-compiled cache
+   * Get global zkApp instance (compiled in main thread)
    */
-  async compile() {
-    if (isContractsCompiled()) {
-      logger.debug('Contracts already compiled');
-      return;
-    }
-
-    await compileContracts();
-  }
-
-  /**
-   * Get or create zkApp instance
-   */
-  private async getZkApp() {
-    if (this.zkApp) {
-      return this.zkApp;
-    }
-
-    // Ensure contracts are loaded
-    this.cachedModules = await loadContracts();
-
-    // Create instance
-    this.zkApp = await createContractInstance(config.mina.poolAddress);
-
-    return this.zkApp;
+  async getZkApp() {
+    return getGlobalZkApp();
   }
 
   /**
    * Normalize tradeId input (UUID string or raw Field string) into Field.
    */
   private toTradeIdField(tradeId: string): Field {
-    const modules = this.cachedModules ?? getContractModules();
+    const modules = getContractModules();
     const isUuid =
       typeof tradeId === 'string' &&
       typeof modules.isValidUUID === 'function' &&
@@ -85,55 +52,40 @@ export class MinaClient {
   }
 
   /**
-   * Query active trades from OffchainState by reconstructing the Merkle map
-   * directly from actions via the archive endpoint.
+   * Register a trade ID for tracking
+   */
+  registerTrade(tradeId: string) {
+    this.trackedTradeIds.add(tradeId);
+    logger.debug(`Registered trade: ${tradeId}`);
+  }
+
+  /**
+   * Unregister a trade ID (when completed/failed)
+   */
+  unregisterTrade(tradeId: string) {
+    this.trackedTradeIds.delete(tradeId);
+    logger.debug(`Unregistered trade: ${tradeId}`);
+  }
+
+  /**
+   * Query tracked active trades using simple .get() method
+   * Only checks trades we're actively managing
    */
   async getActiveTrades(): Promise<MinaTrade[]> {
-    try {
-      // Fetch account state (ensures state cache is primed)
-      await fetchAccount({ publicKey: config.mina.poolAddress });
+    const trades: MinaTrade[] = [];
 
-      // Ensure contracts/modules are available
-      const modules = await loadContracts();
-      this.cachedModules = modules;
-      const zkApp = await this.getZkApp();
-
-      // Rebuild Merkle map from all actions
-      const { valueMap } = await fetchMerkleMap(
-        this.treeHeight,
-        { address: config.mina.poolAddress, tokenId: zkApp.token.id },
-        undefined
-      );
-
-      const trades: MinaTrade[] = [];
-      const valueSize = modules.TradeData.sizeInFields();
-
-      for (const [, valueFields] of valueMap.entries()) {
-        const tradeFields = valueFields.slice(0, valueSize);
-        const tradeData = modules.TradeData.fromFields(tradeFields);
-
-        // Skip empty/completed entries
-        if (tradeData.completed.toBoolean()) continue;
-
-        trades.push({
-          tradeId: tradeData.tradeId.toString(),
-          tradeIdField: tradeData.tradeId.toString(),
-          depositor: tradeData.depositor.toBase58(),
-          amount: tradeData.amount.toString(),
-          inTransit: tradeData.inTransit.toBoolean(),
-          claimant: tradeData.claimant.toBase58(),
-          refundAddress: tradeData.refundAddress.toBase58(),
-          depositBlockHeight: tradeData.depositBlockHeight.toString(),
-          expiryBlockHeight: tradeData.expiryBlockHeight.toString(),
-        });
+    for (const tradeId of this.trackedTradeIds) {
+      const trade = await this.getTrade(tradeId);
+      if (trade) {
+        trades.push(trade);
+      } else {
+        // Trade completed/not found, unregister it
+        this.unregisterTrade(tradeId);
       }
-
-      logger.debug(`Found ${trades.length} active trades from archive`);
-      return trades;
-    } catch (error) {
-      logger.error(`Failed to query active trades: ${error}`);
-      return [];
     }
+
+    logger.debug(`Found ${trades.length} active tracked trades`);
+    return trades;
   }
 
   /**
@@ -149,7 +101,7 @@ export class MinaClient {
       const tradeIdField = this.toTradeIdField(tradeId);
 
       // Fetch latest account state
-      await fetchAccount({ publicKey: config.mina.poolAddress });
+      await fetchAccountWithRetry({ publicKey: config.mina.poolAddress });
 
       // Query trade from OffchainState
       const trade = await zkApp.offchainState.fields.trades.get(tradeIdField);
@@ -203,8 +155,8 @@ export class MinaClient {
       const zkApp = await this.getZkApp();
 
       // Fetch latest account state
-      await fetchAccount({ publicKey: config.mina.poolAddress });
-      await fetchAccount({ publicKey: config.operator.publicKey });
+      await fetchAccountWithRetry({ publicKey: config.mina.poolAddress });
+      await fetchAccountWithRetry({ publicKey: config.operator.publicKey });
 
       // Create transaction
       const txn = await Mina.transaction(
@@ -255,8 +207,8 @@ export class MinaClient {
       const zkApp = await this.getZkApp();
 
       // Fetch latest account state
-      await fetchAccount({ publicKey: config.mina.poolAddress });
-      await fetchAccount({ publicKey: config.operator.publicKey });
+      await fetchAccountWithRetry({ publicKey: config.mina.poolAddress });
+      await fetchAccountWithRetry({ publicKey: config.operator.publicKey });
 
       // Create transaction
       const txn = await Mina.transaction(
@@ -295,7 +247,7 @@ export class MinaClient {
    */
   async getPoolBalance(): Promise<bigint> {
     try {
-      const account = await fetchAccount({ publicKey: config.mina.poolAddress });
+      const account = await fetchAccountWithRetry({ publicKey: config.mina.poolAddress });
       const balance = account.account?.balance.toBigInt() ?? 0n;
       return balance;
     } catch (error) {

@@ -1,7 +1,7 @@
-import { Mina, fetchAccount } from 'o1js';
+import { Mina } from 'o1js';
 import { config } from './config.js';
 import { logger } from './logger.js';
-import { createContractInstance, loadContracts } from './contract-imports.js';
+import { getGlobalZkApp, getContractModules, fetchAccountWithRetry } from './shared-contracts.js';
 
 /**
  * Settlement Worker
@@ -26,6 +26,7 @@ export class SettlementWorker {
    * Start settlement monitoring loop
    */
   async start() {
+    logger.info('[SettlementWorker] start() called');
     if (this.isRunning) {
       logger.warn('Settlement worker already running');
       return;
@@ -35,7 +36,9 @@ export class SettlementWorker {
     logger.info(`Settlement worker started (interval: ${this.intervalMs}ms)`);
 
     // Run initial check
+    logger.info('[SettlementWorker] Running initial checkAndSettle()...');
     await this.checkAndSettle();
+    logger.info('[SettlementWorker] Initial check complete');
 
     // Start periodic checking
     const intervalId = setInterval(async () => {
@@ -61,16 +64,32 @@ export class SettlementWorker {
    */
   private async checkAndSettle() {
     try {
-      logger.debug('Checking for pending OffchainState actions...');
+      logger.info('[checkAndSettle] START');
+      logger.info('[checkAndSettle] Checking for pending OffchainState actions...');
 
-      // Fetch account state
-      await fetchAccount({ publicKey: config.mina.poolAddress });
+      logger.info('[checkAndSettle] Setting network instance...');
+      // Ensure network is set
+      const network = Mina.Network({
+        mina: config.mina.graphqlEndpoint,
+        archive: config.mina.graphqlEndpoint,
+      });
+      Mina.setActiveInstance(network);
+      logger.info('[checkAndSettle] Network instance set');
 
+      logger.info('[checkAndSettle] Fetching account state...');
+      // Fetch account state with retry
+      await fetchAccountWithRetry({ publicKey: config.mina.poolAddress });
+      logger.info('[checkAndSettle] Account state fetched');
+
+      logger.info('[checkAndSettle] Getting global zkApp instance...');
+      // Use GLOBAL zkApp instance (compiled in main thread)
+      const zkApp = getGlobalZkApp();
+      logger.info('[checkAndSettle] Got global zkApp');
+
+      logger.info('[checkAndSettle] Loading contract modules...');
       // Get contract modules
-      const modules = await loadContracts();
-
-      // Create contract instance
-      const zkApp = await createContractInstance(config.mina.poolAddress);
+      const modules = getContractModules();
+      logger.info('[checkAndSettle] Modules loaded');
 
       // Query settlement status
       // Note: This is a simplified check. In production, you would:
@@ -81,7 +100,9 @@ export class SettlementWorker {
       // For now, we'll attempt settlement periodically
       // The actual settlement will only succeed if there are actions to settle
 
+      logger.info('[checkAndSettle] Calling getPendingActionsCount()...');
       const pendingActionsCount = await this.getPendingActionsCount();
+      logger.info(`[checkAndSettle] Got pending actions count: ${pendingActionsCount}`);
 
       if (pendingActionsCount >= this.minActionsThreshold) {
         logger.info(
@@ -90,7 +111,7 @@ export class SettlementWorker {
 
         await this.triggerSettlement(zkApp, modules);
       } else {
-        logger.debug(
+        logger.info(
           `Pending actions: ${pendingActionsCount} (threshold: ${this.minActionsThreshold})`
         );
       }
@@ -104,22 +125,38 @@ export class SettlementWorker {
    */
   private async getPendingActionsCount(): Promise<number> {
     try {
-      // Step 1: Fetch fresh account state FIRST
-      const account = await fetchAccount({
+      logger.info('[1/6] Setting network instance...');
+      // Step 0: Ensure network is set
+      const network = Mina.Network({
+        mina: config.mina.graphqlEndpoint,
+        archive: config.mina.graphqlEndpoint,
+      });
+      Mina.setActiveInstance(network);
+      logger.info('[1/6] ✓ Network instance set');
+
+      logger.info('[2/6] Fetching account state...');
+      // Step 1: Fetch fresh account state FIRST with retry
+      const account = await fetchAccountWithRetry({
         publicKey: config.mina.poolAddress
       });
+      logger.info('[2/6] ✓ Account fetched');
 
       if (!account.account) {
         logger.warn('Account not found on-chain');
         return 0;
       }
 
-      // Step 2: Create zkApp instance AFTER fetch (uses fresh state)
-      const zkApp = await createContractInstance(config.mina.poolAddress);
+      logger.info('[3/6] Getting global zkApp instance...');
+      // Step 2: Use GLOBAL zkApp instance (compiled in main thread)
+      const zkApp = getGlobalZkApp();
+      logger.info('[3/6] ✓ Got global zkApp');
 
+      logger.info('[4/6] Getting offchain state commitments...');
       // Step 3: Get fresh commitments from fetched state
       const commitments = zkApp.offchainStateCommitments.get();
+      logger.info('[4/6] ✓ Commitments retrieved');
 
+      logger.info('[5/6] Fetching actions since last settlement...');
       // Step 4: Fetch actions since last settlement
       const actions = await Mina.fetchActions(
         config.mina.poolAddress,
@@ -130,7 +167,9 @@ export class SettlementWorker {
         logger.warn(`Fetch actions error: ${actions.error.statusText}`);
         return 0;
       }
+      logger.info('[5/6] ✓ Actions fetched');
 
+      logger.info('[6/6] Counting actions...');
       // Step 5: Count all actions across blocks/accounts
       const count = actions.reduce((blockSum, block) => {
         const blockCount = block.actions.reduce(
@@ -140,8 +179,8 @@ export class SettlementWorker {
         return blockSum + blockCount;
       }, 0);
 
-      logger.debug(
-        `Pending actions: ${count} (from actionState: ${commitments.actionState})`
+      logger.info(
+        `[6/6] ✓ Pending actions: ${count} (from actionState: ${commitments.actionState})`
       );
 
       return count;
@@ -156,12 +195,29 @@ export class SettlementWorker {
    */
   private async triggerSettlement(zkApp: any, modules: any) {
     try {
+      // Ensure network is set
+      const network = Mina.Network({
+        mina: config.mina.graphqlEndpoint,
+        archive: config.mina.graphqlEndpoint,
+      });
+      Mina.setActiveInstance(network);
+
       logger.info('Generating settlement proof (this takes ~5-6 minutes)...');
       const startTime = Date.now();
 
-      // Create settlement proof
+      // Get global zkApp to create settlement proof
+      const zkApp = getGlobalZkApp();
+
+      // Create settlement proof from zkApp's offchainState
       // Note: This is a compute-intensive operation
-      const proof = await modules.offchainState.createSettlementProof();
+      // May throw "can't be run outside of a checked computation" but recovers internally
+      let proof;
+      try {
+        proof = await zkApp.offchainState.createSettlementProof();
+      } catch (error) {
+        logger.warn(`Settlement proof warning (non-fatal): ${error}`);
+        proof = await zkApp.offchainState.createSettlementProof();
+      }
 
       const proofDuration = ((Date.now() - startTime) / 1000).toFixed(2);
       logger.info(`✓ Settlement proof generated in ${proofDuration}s`);
@@ -169,9 +225,9 @@ export class SettlementWorker {
       // Submit proof to contract
       logger.info('Submitting settlement proof...');
 
-      // Fetch latest state
-      await fetchAccount({ publicKey: config.mina.poolAddress });
-      await fetchAccount({ publicKey: config.operator.publicKey });
+      // Fetch latest state with retry
+      await fetchAccountWithRetry({ publicKey: config.mina.poolAddress });
+      await fetchAccountWithRetry({ publicKey: config.operator.publicKey });
 
       // Create transaction
       const txn = await Mina.transaction(
@@ -191,8 +247,14 @@ export class SettlementWorker {
 
       logger.info(`✓ Settlement transaction sent: ${sentTx.hash}`);
 
-      // Wait for confirmation
-      await sentTx.wait();
+      // Wait for confirmation (Zeko L2 doesn't support .wait() GraphQL queries)
+      // Transaction is already sent and will be included in next block (~10-25s)
+      try {
+        await sentTx.wait({ maxAttempts: 3, interval: 5000 });
+      } catch (error) {
+        // Zeko doesn't support bestChain query - ignore and trust hash was returned
+        logger.warn(`Wait confirmation warning (non-fatal): ${error}`);
+      }
 
       const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
       logger.info(`✓✓ Settlement complete in ${totalDuration}s`);
