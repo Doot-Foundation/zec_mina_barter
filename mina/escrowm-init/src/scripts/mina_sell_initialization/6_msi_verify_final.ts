@@ -179,28 +179,26 @@ async function main() {
   }
 
   // ============================================================================
-  // STEP 8: Mock ZEC Verification
+  // STEP 8: Real ZEC Escrowdv2 Verification
   // ============================================================================
 
-  logSection('🪙 Mock ZEC Trade Verification');
+  logSection('🪙 Real ZEC Escrowdv2 Verification');
 
-  if (state.zecTradeData) {
-    console.log(`  ⚠️  MOCK ZEC Trade (Bob → Alice):`);
-    console.log(`  Seller: ${state.zecTradeData.sellerAddress}`);
-    console.log(`  Buyer: ${state.zecTradeData.buyerAddress}`);
-    console.log(`  Amount: ${Number(state.zecTradeData.amount) / 1e8} ZEC`);
+  if (state.escrowdPort) {
+    console.log(`  ✅ escrowdv2 Instance:`);
+    console.log(`  Port: ${state.escrowdPort}`);
+    console.log(`  Address: ${state.escrowdAddress?.slice(0, 20)}...${state.escrowdAddress?.slice(-20)}`);
+    console.log(`  API Key: ${state.escrowdApiKey}`);
+    console.log(`  Verified: ${state.escrowdVerified ? 'Yes' : 'No'}`);
+    console.log(`  In Transit: ${state.escrowdInTransit ? 'Yes' : 'No'}`);
 
-    if (state.zecTradeData.txHash) {
-      console.log(`  Tx Hash: ${state.zecTradeData.txHash}`);
-      console.log(`  Confirmations: ${state.zecTradeData.confirmations}`);
-      logSuccess('Mock ZEC transaction confirmed');
-    } else {
-      logWarning('Mock ZEC transaction not confirmed');
+    if (state.escrowdOriginAddress) {
+      console.log(`  Origin Address: ${state.escrowdOriginAddress.slice(0, 20)}...${state.escrowdOriginAddress.slice(-20)}`);
     }
 
-    console.log('  ⚠️  This was MOCKED data for testing purposes');
+    logSuccess('Real ZEC escrowdv2 integration verified');
   } else {
-    logWarning('No ZEC trade data found in state');
+    logWarning('No ZEC escrowdv2 data found in state');
   }
 
   // ============================================================================

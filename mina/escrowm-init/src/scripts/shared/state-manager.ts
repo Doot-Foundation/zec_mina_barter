@@ -3,6 +3,7 @@ import path from 'path';
 import { Field } from 'o1js';
 import { generateUUID, uuidToField } from '../../utils.js';
 import { fileURLToPath } from 'url';
+import { killEscrowdInstance } from './real-zec.js';
 
 // Get directory name for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -30,13 +31,15 @@ export interface TradeState {
   lockTxHash?: string;          // Transaction hash from lock
   claimTxHash?: string;         // Transaction hash from claim
   settleTxHash?: string;        // Transaction hash from settle
-  zecTradeData?: {              // Mock ZEC trade data
-    sellerAddress: string;
-    buyerAddress: string;
-    amount: string;             // Zatoshis as string
-    txHash?: string;
-    confirmations?: number;
-  };
+
+  // Real ZEC escrowdv2 integration fields
+  escrowdApiKey?: string;          // Unique API key for this trade
+  escrowdPort?: number;            // Port where escrowdv2 is running (8000-18000)
+  escrowdAddress?: string;         // ZEC unified address (utest1...)
+  escrowdVerified?: boolean;       // ZEC funding confirmed
+  escrowdInTransit?: boolean;      // Escrow locked
+  escrowdOriginAddress?: string;   // Where ZEC came from (for refunds)
+
   createdAt: number;            // Timestamp
   completedAt?: number;         // Timestamp
 }
@@ -169,6 +172,38 @@ export function cleanupStateFiles(): void {
 }
 
 // ==============================================================================
+// CLEANUP FAILED TRADE
+// ==============================================================================
+
+export async function cleanupFailedTrade(
+  scenario: 'msi' | 'zsi',
+  state: TradeState
+): Promise<void> {
+  console.log('\n🧹 Cleaning up failed trade...');
+
+  // 1. Kill escrowdv2 instance if running
+  if (state.escrowdPort) {
+    console.log('  Stopping escrowdv2 instance...');
+    await killEscrowdInstance(state.tradeId);
+  }
+
+  // 2. Emergency unlock on MINA if locked
+  if (state.lockTxHash) {
+    console.log('  ⚠️  Trade was locked on MINA side');
+    console.log('  ⚠️  Manual recovery needed: Call emergencyUnlock on MINA contract');
+    console.log(`  ⚠️  Trade ID Field: ${state.tradeIdField}`);
+    console.log('  ⚠️  This will release the locked MINA funds');
+  }
+
+  // 3. Mark trade as failed in state file
+  state.completedAt = Date.now();
+  updateTradeState(scenario, state);
+
+  console.log('  ✅ Cleanup complete');
+  console.log('  ℹ️  State file preserved for debugging');
+}
+
+// ==============================================================================
 // STATE DISPLAY
 // ==============================================================================
 
@@ -194,14 +229,23 @@ export function displayTradeState(scenario: 'msi' | 'zsi'): void {
     console.log(`  ✅ Settle Tx: ${state.settleTxHash.slice(0, 10)}...${state.settleTxHash.slice(-10)}`);
   }
 
-  if (state.zecTradeData) {
-    console.log(`  🪙 ZEC Trade (MOCK):`);
-    console.log(`    Seller: ${state.zecTradeData.sellerAddress}`);
-    console.log(`    Buyer: ${state.zecTradeData.buyerAddress}`);
-    console.log(`    Amount: ${Number(state.zecTradeData.amount) / 1e8} ZEC`);
-    if (state.zecTradeData.txHash) {
-      console.log(`    Tx: ${state.zecTradeData.txHash.slice(0, 10)}...${state.zecTradeData.txHash.slice(-10)}`);
-      console.log(`    Confirmations: ${state.zecTradeData.confirmations}`);
+  if (state.escrowdPort) {
+    console.log(`  🪙 ZEC escrowdv2 Instance:`);
+    console.log(`    Port: ${state.escrowdPort}`);
+    if (state.escrowdAddress) {
+      console.log(`    Address: ${state.escrowdAddress.slice(0, 20)}...${state.escrowdAddress.slice(-20)}`);
+    }
+    if (state.escrowdApiKey) {
+      console.log(`    API Key: ${state.escrowdApiKey}`);
+    }
+    if (state.escrowdVerified !== undefined) {
+      console.log(`    Verified: ${state.escrowdVerified ? '✅' : '❌'}`);
+    }
+    if (state.escrowdInTransit !== undefined) {
+      console.log(`    In Transit: ${state.escrowdInTransit ? '✅' : '❌'}`);
+    }
+    if (state.escrowdOriginAddress) {
+      console.log(`    Origin: ${state.escrowdOriginAddress.slice(0, 20)}...${state.escrowdOriginAddress.slice(-20)}`);
     }
   }
 

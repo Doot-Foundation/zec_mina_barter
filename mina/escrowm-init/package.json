@@ -24,7 +24,11 @@
     "clear-cache": "npx rimraf cache/* !cache/README.md && npx rimraf cache.json && echo \"Cache cleared successfully!\"",
     "keys:generate": "npm run build && node build/scripts/generate-keys.js",
     "deploy:local": "npm run build && node build/src/deploy-local.js",
-    "deploy:zeko": "npm run build && node build/src/deploy-zeko.js"
+    "deploy:zeko": "npm run build && node build/src/deploy-zeko.js",
+    "test:msi-real": "node build/src/scripts/mina_sell_initialization/0_msi_setup.js && node build/src/scripts/mina_sell_initialization/1_msi_deposit.js && node build/src/scripts/mina_sell_initialization/2_msi_verify_deposit.js && node build/src/scripts/mina_sell_initialization/3_msi_lock.js && node build/src/scripts/mina_sell_initialization/4_msi_claim.js && node build/src/scripts/mina_sell_initialization/6_msi_verify_final.js",
+    "test:zsi-real": "node build/src/scripts/zec_sell_initialization/0_zsi_setup.js && node build/src/scripts/zec_sell_initialization/1_zsi_deposit.js && node build/src/scripts/zec_sell_initialization/2_zsi_verify_deposit.js && node build/src/scripts/zec_sell_initialization/3_zsi_lock.js && node build/src/scripts/zec_sell_initialization/4_zsi_claim.js && node build/src/scripts/zec_sell_initialization/6_zsi_verify_final.js",
+    "pretest:msi-real": "npm run build",
+    "pretest:zsi-real": "npm run build"
   },
   "dependencies": {
     "dotenv": "^16.3.1"
@@ -33,10 +37,12 @@
     "@babel/preset-env": "^7.16.4",
     "@babel/preset-typescript": "^7.16.0",
     "@types/node": "^22.14.1",
+    "@types/node-fetch": "^2.6.13",
     "@typescript-eslint/eslint-plugin": "^5.5.0",
     "@typescript-eslint/parser": "^5.5.0",
     "eslint": "^8.7.0",
     "eslint-plugin-o1js": "^0.4.0",
+    "node-fetch": "^2.7.0",
     "prettier": "^2.3.2",
     "ts-jest": "^29.2.4",
     "typescript": "^5.4.5"
