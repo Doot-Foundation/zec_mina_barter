@@ -1,8 +1,12 @@
-import { Mina, PublicKey, Field } from 'o1js';
-import { config } from './config.js';
-import { logger } from './logger.js';
-import { MinaTrade } from './types.js';
-import { getGlobalZkApp, getContractModules, fetchAccountWithRetry } from './shared-contracts.js';
+import { Mina, PublicKey, Field } from "o1js";
+import { config } from "./config.js";
+import { logger } from "./logger.js";
+import { MinaTrade } from "./types.js";
+import {
+  getGlobalZkApp,
+  getContractModules,
+  fetchAccountWithRetry,
+} from "./shared-contracts.js";
 
 /**
  * Client for interacting with MinaEscrowPool contract
@@ -15,7 +19,7 @@ export class MinaClient {
    * Initialize network connection
    */
   async initialize() {
-    logger.info('Initializing Mina network connection...');
+    logger.info("Initializing Mina network connection...");
 
     // Setup network
     this.network = Mina.Network({
@@ -40,11 +44,11 @@ export class MinaClient {
   private toTradeIdField(tradeId: string): Field {
     const modules = getContractModules();
     const isUuid =
-      typeof tradeId === 'string' &&
-      typeof modules.isValidUUID === 'function' &&
+      typeof tradeId === "string" &&
+      typeof modules.isValidUUID === "function" &&
       modules.isValidUUID(tradeId);
 
-    if (isUuid && typeof modules.uuidToField === 'function') {
+    if (isUuid && typeof modules.uuidToField === "function") {
       return modules.uuidToField(tradeId);
     }
 
@@ -146,7 +150,10 @@ export class MinaClient {
    * @param claimant - ZEC seller's MINA address (who can claim)
    * @returns Transaction hash or null if failed
    */
-  async lockTrade(tradeId: string, claimant: PublicKey): Promise<string | null> {
+  async lockTrade(
+    tradeId: string,
+    claimant: PublicKey
+  ): Promise<string | null> {
     try {
       const tradeIdField = this.toTradeIdField(tradeId);
       logger.info(`Locking MINA trade: ${tradeIdField.toString()}`);
@@ -160,21 +167,21 @@ export class MinaClient {
 
       // Create transaction
       const txn = await Mina.transaction(
-        { sender: config.operator.publicKey, fee: 0.1e9 },
+        { sender: config.operator.publicKey, fee: 1e9 },
         async () => {
           await zkApp.lockTrade(tradeIdField, claimant);
         }
       );
 
       // Generate proof
-      logger.debug('Generating proof for lockTrade...');
+      logger.debug("Generating proof for lockTrade...");
       await txn.prove();
 
       // Sign and send
       const signedTx = await txn.sign([config.operator.privateKey]).send();
 
       if (!signedTx || !signedTx.hash) {
-        throw new Error('Transaction failed: no hash returned');
+        throw new Error("Transaction failed: no hash returned");
       }
 
       const txHash = signedTx.hash;
@@ -212,21 +219,21 @@ export class MinaClient {
 
       // Create transaction
       const txn = await Mina.transaction(
-        { sender: config.operator.publicKey, fee: 0.1e9 },
+        { sender: config.operator.publicKey, fee: 1e9 },
         async () => {
           await zkApp.emergencyUnlock(tradeIdField);
         }
       );
 
       // Generate proof
-      logger.debug('Generating proof for emergencyUnlock...');
+      logger.debug("Generating proof for emergencyUnlock...");
       await txn.prove();
 
       // Sign and send
       const signedTx = await txn.sign([config.operator.privateKey]).send();
 
       if (!signedTx || !signedTx.hash) {
-        throw new Error('Transaction failed: no hash returned');
+        throw new Error("Transaction failed: no hash returned");
       }
 
       const txHash = signedTx.hash;
@@ -247,7 +254,9 @@ export class MinaClient {
    */
   async getPoolBalance(): Promise<bigint> {
     try {
-      const account = await fetchAccountWithRetry({ publicKey: config.mina.poolAddress });
+      const account = await fetchAccountWithRetry({
+        publicKey: config.mina.poolAddress,
+      });
       const balance = account.account?.balance.toBigInt() ?? 0n;
       return balance;
     } catch (error) {

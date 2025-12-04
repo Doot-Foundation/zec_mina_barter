@@ -3,16 +3,9 @@ import {
   setupNetwork,
   loadTestAccounts,
   compileContract,
-  getContractInstance,
-  logBalances,
-  waitForConfirmation,
   logHeader,
   logSection,
   logSuccess,
-  logInfo,
-  logWarning,
-  FEE,
-  CONTRACT_ADDRESS,
 } from '../shared/test-utils.js';
 import {
   loadTradeState,
@@ -26,7 +19,6 @@ import {
   getEscrowdStatus,
   promptUserToFundZec,
   calculateZecFromOracle,
-  generateApiKey,
 } from '../shared/real-zec.js';
 
 /**
@@ -85,9 +77,10 @@ async function main() {
     await ensureMiddlewareRunning();
     logSuccess('Middleware is accessible');
 
-    // Generate unique API key for this trade
-    const apiKey = generateApiKey();
-    console.log(`  Generated API Key: ${apiKey}`);
+    // Use operator token (consistent across all trades)
+    const apiKey =
+      process.env.ESCROWD_OPERATOR_TOKEN || 'this_is_escrowd_operator_token';
+    console.log(`  Using Operator Token: ${apiKey}`);
 
     // Spawn escrowdv2 instance via middleware API
     console.log(`  Calling middleware: POST /api/spawn-escrowd`);
@@ -106,7 +99,6 @@ async function main() {
       escrowdPort: spawnResult.port,
       escrowdAddress: spawnResult.address,
     });
-
   } catch (err: any) {
     console.error('❌ Failed to spawn escrowdv2:', err.message);
     const currentState = loadTradeState('zsi');
@@ -124,24 +116,29 @@ async function main() {
     const currentState = loadTradeState('zsi');
 
     // Calculate expected ZEC amount from oracle
-    const minaAmount = Number(currentState.amount) / 1e9;  // Convert from nanomina
+    const minaAmount = Number(currentState.amount) / 1e9; // Convert from nanomina
     const expectedZec = await calculateZecFromOracle(minaAmount);
 
     console.log(`  MINA Amount: ${minaAmount} MINA`);
     console.log(`  Expected ZEC: ${expectedZec.toFixed(8)} ZEC`);
-    console.log(`  Exchange Rate: ${(expectedZec / minaAmount).toFixed(8)} ZEC per MINA`);
+    console.log(
+      `  Exchange Rate: ${(expectedZec / minaAmount).toFixed(8)} ZEC per MINA`
+    );
 
     // Prompt user to send ZEC (uses account 1 for ZSI)
     await promptUserToFundZec(
       currentState.escrowdAddress!,
       expectedZec,
       currentState.escrowdApiKey!,
-      1,  // Use zcashd account 1 (different from MSI which uses 0)
+      1, // Use zcashd account 1 (different from MSI which uses 0)
       currentState.escrowdPort!
     );
 
     // Verify funding was successful
-    const status = await getEscrowdStatus(currentState.tradeId, currentState.escrowdPort!);
+    const status = await getEscrowdStatus(
+      currentState.tradeId,
+      currentState.escrowdPort!
+    );
 
     if (!status.verified) {
       throw new Error('ZEC funding verification failed');
@@ -156,7 +153,6 @@ async function main() {
       escrowdVerified: true,
       escrowdOriginAddress: status.origin_address,
     });
-
   } catch (err: any) {
     console.error('❌ ZEC funding failed:', err.message);
     const currentState = loadTradeState('zsi');
@@ -180,14 +176,17 @@ async function main() {
   try {
     const currentState = loadTradeState('zsi');
     let attempts = 0;
-    const maxAttempts = 60;  // 5 minutes
+    const maxAttempts = 60; // 5 minutes
 
     while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 5000));  // 5 seconds
+      await new Promise((resolve) => setTimeout(resolve, 5000)); // 5 seconds
       attempts++;
 
       // Check escrowdv2 status
-      const status = await getEscrowdStatus(currentState.tradeId, currentState.escrowdPort!);
+      const status = await getEscrowdStatus(
+        currentState.tradeId,
+        currentState.escrowdPort!
+      );
 
       if (status.in_transit) {
         console.log(`\n  ✅ Trade locked by middleware!`);
@@ -201,7 +200,6 @@ async function main() {
     if (attempts >= maxAttempts) {
       throw new Error('Timeout waiting for middleware to lock trade');
     }
-
   } catch (err: any) {
     console.error('❌ Lock coordination failed:', err.message);
     const currentState = loadTradeState('zsi');
@@ -220,15 +218,24 @@ async function main() {
   logSection('📊 Lock Summary');
   console.log(`  ✅ Trade ID: ${finalState.tradeId}`);
   console.log(`  ✅ escrowdv2 Port: ${finalState.escrowdPort}`);
-  console.log(`  ✅ escrowdv2 Address: ${finalState.escrowdAddress?.slice(0, 20)}...${finalState.escrowdAddress?.slice(-20)}`);
-  console.log(`  ✅ ZEC Verified: ${finalState.escrowdVerified ? 'Yes' : 'No'}`);
+  console.log(
+    `  ✅ escrowdv2 Address: ${finalState.escrowdAddress?.slice(
+      0,
+      20
+    )}...${finalState.escrowdAddress?.slice(-20)}`
+  );
+  console.log(
+    `  ✅ ZEC Verified: ${finalState.escrowdVerified ? 'Yes' : 'No'}`
+  );
   console.log(`  ✅ In Transit: ${finalState.escrowdInTransit ? 'Yes' : 'No'}`);
   console.log(`  ✅ Amount: ${Number(finalState.amount) / 1e9} MINA`);
   console.log(`  ✅ Real ZEC integration complete!`);
 
   logSection('🎯 Next Step');
-  console.log('  Run: node build/src/scripts/zec_sell_initialization/4_zsi_claim.js');
-  console.log('  This will execute Bob\'s claim of the locked MINA');
+  console.log(
+    '  Run: node build/src/scripts/zec_sell_initialization/4_zsi_claim.js'
+  );
+  console.log("  This will execute Bob's claim of the locked MINA");
   console.log('  After claim, middleware will automatically send ZEC to Bob');
 }
 

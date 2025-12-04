@@ -220,16 +220,30 @@ export async function promptUserToFundZec(
   console.log(`  From Account: ${fromAccount}`);
   console.log(`  API Key (memo): ${apiKey}\n`);
 
+  // Hex-encode the memo (API key)
+  const memoHex = Buffer.from(apiKey, 'utf8').toString('hex');
+
+  // Account addresses (must match your zcashd wallet)
+  const accountAddresses = {
+    0: 'utest15dsyyx0mnx7tgnewau68lxsylcyttmxvd2sddpjjctscjmdqld5dwj76mcggymhg32hk8jxr398hmwxj2cf6skpnxyhy8v2yw8j97h04pzjassln94mgeuf2h9v9mp0gmhd5cxtqcz84dm856tp5pkp6q7tld9pe3y3dcrdmw5sqa7lq8hwp8der5209el4rcp7vjpjrgl7fxrucwk2',
+    1: 'utest1ttt7ggr22jutu4dlvw8649j6a5c70ljj3ec5tymtaqmrl69rx7vruup73wy5ujydfvzst0qq2f0kup88wrhtp7uamrzw708hxpgumy7l5hzywr9z9freszdnqpvjp9cfrgjphs2me5cpc39j7ts4ywyxk2659er8xju34yxmkk08wk8q2hqvftjx7tx6hjd7nxkhrf30ja2c2v4xppk',
+  };
+
+  const sourceAddress = accountAddresses[fromAccount as keyof typeof accountAddresses];
+  if (!sourceAddress) {
+    throw new Error(`Invalid account number: ${fromAccount}. Use 0 or 1.`);
+  }
+
   console.log('  Copy-paste this command in another terminal:\n');
   console.log(`curl -u zcashrpc:your_secure_password_here_change_me \\`);
-  console.log(`  --data-binary '{"jsonrpc":"1.0","id":"fund","method":"z_sendmany","params":[${fromAccount},[{"address":"${escrowAddress}","amount":${expectedZec},"memo":"${apiKey}"}]]}' \\`);
-  console.log(`  -H 'content-type: text/plain;' \\`);
+  console.log(`  --data-binary '{"jsonrpc":"1.0","id":"fund","method":"z_sendmany","params":["${sourceAddress}",[{"address":"${escrowAddress}","amount":${expectedZec},"memo":"${memoHex}"}],1,null,"AllowRevealedAmounts"]}' \\`);
+  console.log(`  -H 'content-type:text/plain;' \\`);
   console.log(`  http://127.0.0.1:18232/\n`);
 
   console.log('  Then POST to verify funding:\n');
   console.log(`curl -X POST http://127.0.0.1:${port}/funding/shielded \\`);
   console.log(`  -H 'Content-Type: application/json' \\`);
-  console.log(`  -d '{"api_key":"${apiKey}","memo":"${apiKey}","origin_address":"YOUR_ZEC_ADDRESS"}'\n`);
+  console.log(`  -d '{"api_key":"${apiKey}","memo":"${apiKey}","origin_address":"${sourceAddress}"}'\n`);
 
   console.log('  ⏳ Waiting for confirmation... (press ENTER after sending both commands)');
   console.log('═══════════════════════════════════════════════════════════════\n');

@@ -39,7 +39,7 @@ This protocol enables **atomic swaps** between MINA and ZEC using a hybrid archi
     │  MinaEscrowPool  │  │  escrowdv2 (ZEC) │
     │   (Zeko L2)      │  │  Per-trade       │
     │                  │  │  instances       │
-    │  • Shared pool   │  │  • Port 8000+    │
+    │  • Shared pool   │  │  • Port 9000+    │
     │  • OffchainState │  │  • Shielded      │
     │  • 1B trades     │  │  • Operator API  │
     └──────────────────┘  └──────────────────┘
@@ -488,7 +488,7 @@ POST /send-target                 # Send to target address
 
 ```
 zec_barter/
-├── escrowm/                    # MinaEscrowPool zkApp
+├── escrowm-init/                    # MinaEscrowPool zkApp
 │   ├── src/
 │   │   ├── MinaEscrowPool.ts   # Main contract
 │   │   ├── utils.ts            # UUID/Field conversion

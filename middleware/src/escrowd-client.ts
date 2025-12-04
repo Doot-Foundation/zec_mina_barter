@@ -1,6 +1,7 @@
 import { config, getEscrowdUrl } from './config.js';
 import { logger } from './logger.js';
 import { EscrowdStatusResponse, EscrowdAddressResponse } from './types.js';
+import { portAllocator } from './port-allocator.js';
 
 /**
  * Client for interacting with escrowd instances (ZEC side)

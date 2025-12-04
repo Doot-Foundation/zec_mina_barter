@@ -1,40 +1,33 @@
 import { spawn, ChildProcess } from 'child_process';
-import { config, getEscrowdPort } from './config.js';
+import { config } from './config.js';
 import { logger } from './logger.js';
 import { escrowdClient } from './escrowd-client.js';
+import { portAllocator } from './port-allocator.js';
 
 /**
  * Manages spawning and lifecycle of escrowdv2 instances
  */
 export class EscrowdManager {
-  private instances = new Map<string, ChildProcess>();
+  // Track by tradeId with sequential port allocation
+  private instances = new Map<string, { process: ChildProcess; port: number }>();
 
   /**
    * Spawn a new escrowdv2 instance for a trade
    */
   async spawn(tradeId: string, apiKey: string): Promise<{ success: boolean; port: number; message: string }> {
-    const port = getEscrowdPort(tradeId);
-
     // Check if already running
-    if (this.instances.has(tradeId)) {
-      logger.warn(`Escrowd instance already running for trade ${tradeId} on port ${port}`);
+    const existing = this.instances.get(tradeId);
+    if (existing) {
+      logger.warn(`Escrowd instance already running for trade ${tradeId} on port ${existing.port}`);
       return {
         success: true,
-        port,
+        port: existing.port,
         message: 'Instance already running',
       };
     }
 
-    // Check if something is already on that port
-    const existing = await escrowdClient.getStatus(tradeId);
-    if (existing) {
-      logger.warn(`Escrowd instance already exists for trade ${tradeId} on port ${port}`);
-      return {
-        success: true,
-        port,
-        message: 'Instance already exists',
-      };
-    }
+    // Allocate sequential port
+    const port = portAllocator.allocate(tradeId);
 
     logger.info(`Spawning escrowdv2 instance for trade ${tradeId} on port ${port}`);
 
@@ -79,8 +72,8 @@ export class EscrowdManager {
         stdio: ['ignore', 'pipe', 'pipe'],
       });
 
-      // Store process reference
-      this.instances.set(tradeId, child);
+      // Store process reference by tradeId
+      this.instances.set(tradeId, { process: child, port });
 
       // Log output
       child.stdout?.on('data', (data) => {
@@ -93,35 +86,31 @@ export class EscrowdManager {
 
       // Handle process exit
       child.on('exit', (code) => {
-        logger.info(`Escrowd instance for ${tradeId} exited with code ${code}`);
+        logger.info(`Escrowd instance for ${tradeId} exited with code ${code} (port ${port})`);
         this.instances.delete(tradeId);
+        portAllocator.free(tradeId);
       });
 
       child.on('error', (error) => {
-        logger.error(`Escrowd instance for ${tradeId} error: ${error}`);
+        logger.error(`Escrowd instance for ${tradeId} error: ${error} (port ${port})`);
         this.instances.delete(tradeId);
+        portAllocator.free(tradeId);
       });
 
-      // Wait a bit to check if it started successfully
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-
-      // Verify it's running
-      const status = await escrowdClient.getStatus(tradeId);
-      if (!status) {
-        throw new Error('Instance failed to start - no response from health check');
-      }
-
-      logger.info(`✓ Escrowdv2 instance spawned successfully for trade ${tradeId} on port ${port}`);
+      // Return immediately - caller will handle readiness check
+      logger.info(`✓ Escrowdv2 instance process spawned for trade ${tradeId} on port ${port}`);
+      logger.info(`  Note: Process started but readiness check should be done by caller`);
 
       return {
         success: true,
         port,
-        message: 'Instance spawned successfully',
+        message: 'Instance process spawned (readiness check pending)',
       };
 
     } catch (error) {
       logger.error(`Failed to spawn escrowd instance for ${tradeId}: ${error}`);
       this.instances.delete(tradeId);
+      portAllocator.free(tradeId);
 
       return {
         success: false,
@@ -141,9 +130,10 @@ export class EscrowdManager {
       return false;
     }
 
-    logger.info(`Killing escrowd instance for trade ${tradeId}`);
-    instance.kill('SIGTERM');
+    logger.info(`Killing escrowd instance for trade ${tradeId} on port ${instance.port}`);
+    instance.process.kill('SIGTERM');
     this.instances.delete(tradeId);
+    portAllocator.free(tradeId);
 
     return true;
   }
@@ -151,9 +141,10 @@ export class EscrowdManager {
   /**
    * Get status of all managed instances
    */
-  getInstances(): Array<{ tradeId: string; pid: number | undefined }> {
-    return Array.from(this.instances.entries()).map(([tradeId, process]) => ({
+  getInstances(): Array<{ tradeId: string; port: number; pid: number | undefined }> {
+    return Array.from(this.instances.entries()).map(([tradeId, { process, port }]) => ({
       tradeId,
+      port,
       pid: process.pid,
     }));
   }
@@ -163,9 +154,10 @@ export class EscrowdManager {
    */
   cleanup() {
     logger.info('Cleaning up escrowd instances...');
-    for (const [tradeId, instance] of this.instances.entries()) {
-      logger.info(`Killing instance for ${tradeId}`);
-      instance.kill('SIGTERM');
+    for (const [tradeId, { process, port }] of this.instances.entries()) {
+      logger.info(`Killing instance for trade ${tradeId} on port ${port}`);
+      process.kill('SIGTERM');
+      portAllocator.free(tradeId);
     }
     this.instances.clear();
   }
