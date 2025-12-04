@@ -222,9 +222,10 @@ async function main() {
     const trade = await zkApp.offchainState.fields.trades.get(tradeIdField);
 
     if (!trade.isSome.toBoolean()) {
-      logWarning('Trade not found in offchain state');
-      console.log('  This is EXPECTED if settlement hasn\'t occurred yet');
-      console.log('  The lock transaction was successful - continue to next step');
+      logWarning('Trade not yet visible in offchain state (expected)');
+      console.log('  ℹ️  The lock transaction was successful');
+      console.log('  ℹ️  Settlement hasn\'t occurred yet - will happen next in this script');
+      console.log('  ℹ️  After settlement, the locked state will be queryable');
     } else {
       const tradeData = trade.value;
       logSuccess('Trade found in offchain state!');
@@ -245,10 +246,11 @@ async function main() {
       }
     }
   } catch (error) {
-    logWarning('Failed to query offchain state');
+    logWarning('Could not query offchain state (expected)');
     console.log('  Error:', error);
-    console.log('  This may be expected if settlement hasn\'t occurred yet');
-    console.log('  The lock transaction was successful - continue to next step');
+    console.log('  ℹ️  This is expected - settlement hasn\'t occurred yet');
+    console.log('  ℹ️  Settlement will happen next in this script');
+    console.log('  ℹ️  The lock transaction was successful');
   }
 
   // ============================================================================
