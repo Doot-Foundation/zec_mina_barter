@@ -35,6 +35,7 @@ export async function loadContracts() {
 
 /**
  * Compile contracts (do once at startup)
+ * CRITICAL ORDER: offchainState FIRST, then MinaEscrowPool
  */
 export async function compileContracts() {
   if (isCompiled) {
@@ -42,27 +43,38 @@ export async function compileContracts() {
     return;
   }
 
-  logger.info('Compiling MinaEscrowPool...');
+  logger.info('Compiling contracts (this takes ~50-60 seconds)...');
   const startTime = Date.now();
 
   const modules = await loadContracts();
 
-  // Compile contract and offchain state
-  await modules.MinaEscrowPool.compile();
+  // CRITICAL ORDER: offchainState must be compiled BEFORE MinaEscrowPool
+  logger.debug('Step 1/2: Compiling offchainState...');
+  const offchainStartTime = Date.now();
   await modules.offchainState.compile();
+  const offchainDuration = ((Date.now() - offchainStartTime) / 1000).toFixed(2);
+  logger.debug(`✓ OffchainState compiled in ${offchainDuration}s`);
 
-  const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-  logger.info(`✓ Compiled in ${duration}s`);
+  logger.debug('Step 2/2: Compiling MinaEscrowPool...');
+  await modules.MinaEscrowPool.compile();
+
+  const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
+  logger.info(`✓ Compilation complete in ${totalDuration}s`);
 
   isCompiled = true;
 }
 
 /**
- * Create contract instance
+ * Create contract instance with offchainState binding
  */
 export async function createContractInstance(address: PublicKey) {
   const modules = await loadContracts();
   const zkApp = new modules.MinaEscrowPool(address);
+
+  // CRITICAL: Bind offchainState to contract instance
+  // Without this, offchainState cannot access contract commitments
+  zkApp.offchainState.setContractInstance(zkApp);
+
   return zkApp;
 }
 

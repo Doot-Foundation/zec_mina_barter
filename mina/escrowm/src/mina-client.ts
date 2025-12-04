@@ -1,12 +1,12 @@
-import { Mina, fetchAccount } from 'o1js';
-import { config } from './config.js';
-import { logger } from './logger.js';
+import { Mina, fetchAccount } from "o1js";
+import { config } from "./config.js";
+import { logger } from "./logger.js";
 import {
   loadContracts,
   compileContracts,
   createContractInstance,
   isContractsCompiled,
-} from './contract-loader.js';
+} from "./contract-loader.js";
 
 /**
  * Simplified Mina client for settlement service
@@ -20,7 +20,7 @@ export class MinaClient {
    * Initialize network connection
    */
   async initialize() {
-    logger.info('Initializing Mina network connection...');
+    logger.info("Initializing Mina network connection...");
 
     // Setup network
     this.network = Mina.Network({
@@ -37,7 +37,7 @@ export class MinaClient {
    */
   async compile() {
     if (isContractsCompiled()) {
-      logger.debug('Contracts already compiled');
+      logger.debug("Contracts already compiled");
       return;
     }
 
@@ -72,7 +72,7 @@ export class MinaClient {
       });
 
       if (!account.account) {
-        logger.warn('Account not found on-chain');
+        logger.warn("Account not found on-chain");
         return 0;
       }
 
@@ -87,7 +87,7 @@ export class MinaClient {
         fromActionState: commitments.actionState,
       });
 
-      if ('error' in actions) {
+      if ("error" in actions) {
         logger.warn(`Fetch actions error: ${actions.error.statusText}`);
         return 0;
       }
@@ -117,39 +117,42 @@ export class MinaClient {
    */
   async submitSettlementProof(proof: any): Promise<string | null> {
     try {
-      logger.info('Submitting settlement proof...');
+      logger.info("Submitting settlement proof...");
 
       // Get zkApp instance
       const zkApp = await this.getZkApp();
 
-      // Fetch latest state
+      // Fetch latest account states (critical for fresh nonce and contract state)
+      logger.debug("Fetching latest account states...");
       await fetchAccount({ publicKey: config.mina.poolAddress });
       await fetchAccount({ publicKey: config.operator.publicKey });
+      logger.debug("✓ Account states fetched");
 
-      // Create transaction
+      // Create transaction with fresh nonce (1 MINA fee matches test scripts)
+      logger.debug("Building settlement transaction...");
       const txn = await Mina.transaction(
-        { sender: config.operator.publicKey, fee: 0.1e9 },
+        { sender: config.operator.publicKey, fee: 1e9 }, // 1 MINA (matches test scripts)
         async () => {
           await zkApp.settle(proof);
         }
       );
 
       // Prove and send
-      logger.debug('Proving settlement transaction...');
+      logger.debug("Proving settlement transaction...");
       await txn.prove();
 
-      logger.debug('Signing and sending...');
+      logger.debug("Signing and sending...");
       const sentTx = await txn.sign([config.operator.privateKey]).send();
 
       if (!sentTx || !sentTx.hash) {
-        throw new Error('Settlement transaction failed: no hash returned');
+        throw new Error("Settlement transaction failed: no hash returned");
       }
 
       const txHash = sentTx.hash;
       logger.info(`✓ Settlement transaction sent: ${txHash}`);
 
       // Wait for confirmation
-      logger.debug('Waiting for confirmation...');
+      logger.debug("Waiting for confirmation...");
       await sentTx.wait();
 
       logger.info(`✓ Settlement confirmed: ${txHash}`);
@@ -157,6 +160,35 @@ export class MinaClient {
       return txHash;
     } catch (error) {
       logger.error(`Failed to submit settlement proof: ${error}`);
+      logger.error(
+        `Stack trace: ${error instanceof Error ? error.stack : "N/A"}`
+      );
+      // Enhanced error information for common issues
+      if (error instanceof Error) {
+        if (error.message.includes("Account_nonce_precondition_unsatisfied")) {
+          logger.error("");
+          logger.error("NONCE COLLISION DETECTED:");
+          logger.error(
+            "  - Another transaction was sent from operator during proof generation"
+          );
+          logger.error(
+            "  - This is expected if operator is used by multiple services"
+          );
+          logger.error(
+            "  - Settlement will retry on next cycle with fresh nonce"
+          );
+          logger.error("");
+        } else if (error.message.includes("insufficient balance")) {
+          logger.error("");
+          logger.error("INSUFFICIENT BALANCE:");
+          logger.error(
+            "  - Operator needs at least 1 MINA for settlement transaction fee"
+          );
+          logger.error("  - Check operator balance and fund if needed");
+          logger.error("");
+        }
+      }
+
       return null;
     }
   }

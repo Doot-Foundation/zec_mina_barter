@@ -1,4 +1,4 @@
-import { Field, Bool } from 'o1js';
+import { Field, Bool, PublicKey, fetchAccount } from 'o1js';
 import {
   setupNetwork,
   compileContract,
@@ -8,6 +8,7 @@ import {
   logSuccess,
   logWarning,
   logInfo,
+  CONTRACT_ADDRESS,
 } from '../shared/test-utils.js';
 import {
   loadTradeState,
@@ -59,6 +60,12 @@ async function main() {
 
   logSection('🔍 Querying Offchain State');
   console.log(`  Trade ID: ${state.tradeId}`);
+  console.log('  Fetching contract account...');
+
+  // Fetch contract account first (required for offchain state queries)
+  const contractAddress = PublicKey.fromBase58(CONTRACT_ADDRESS);
+  await fetchAccount({ publicKey: contractAddress });
+
   console.log('  Attempting to query offchain state...');
 
   const zkApp = getContractInstance();

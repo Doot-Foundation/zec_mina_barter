@@ -1,4 +1,4 @@
-import { Mina, Field, PublicKey } from 'o1js';
+import { Mina, Field, PublicKey, fetchAccount } from 'o1js';
 import {
   setupNetwork,
   loadTestAccounts,
@@ -252,14 +252,74 @@ async function main() {
   }
 
   // ============================================================================
+  // STEP 13: Generate Settlement Proof
+  // ============================================================================
+
+  logSection('⚡ Generating Settlement Proof');
+  console.log('  ⚠️  Settlement proof generation takes 5-6 minutes');
+  console.log('  This commits the lock to offchain state');
+  console.log('  Please be patient...\n');
+
+  logInfo('Starting proof generation...');
+  console.log(`  Started at: ${new Date().toLocaleTimeString()}`);
+
+  const proofStartTime = Date.now();
+  const settlementProof = await zkApp.offchainState.createSettlementProof();
+  const proofDuration = ((Date.now() - proofStartTime) / 1000 / 60).toFixed(2);
+
+  logSuccess(`Settlement proof generated in ${proofDuration} minutes`);
+  console.log(`  Completed at: ${new Date().toLocaleTimeString()}`);
+
+  // ============================================================================
+  // STEP 14: Submit Settlement Transaction
+  // ============================================================================
+
+  logSection('📤 Submitting Settlement Transaction');
+
+  // Fetch latest account state to ensure fresh nonce
+  logInfo('Fetching latest Operator account state...');
+  await fetchAccount({ publicKey: accounts.operator.address });
+
+  logInfo('Building settlement transaction...');
+  const settleTxn = await Mina.transaction(
+    { sender: accounts.operator.address, fee: FEE },
+    async () => {
+      await zkApp.settle(settlementProof);
+    }
+  );
+
+  logSuccess('Transaction built');
+
+  logInfo('Generating transaction proof...');
+  await settleTxn.prove();
+  logSuccess('Transaction proof generated');
+
+  logInfo('Signing transaction with Operator key...');
+  const settleSentTx = await settleTxn.sign([accounts.operator.key]).send();
+
+  logSection('✅ Settlement Transaction Sent');
+  console.log(`  Transaction Hash: ${settleSentTx.hash}`);
+  console.log(`  Explorer: https://zekoscan.io/testnet/tx/${settleSentTx.hash}`);
+
+  // ============================================================================
+  // STEP 15: Wait for Settlement Confirmation
+  // ============================================================================
+
+  await waitForConfirmation();
+
+  logSuccess('Lock settled on-chain - offchain state is now queryable');
+
+  // ============================================================================
   // SUMMARY
   // ============================================================================
 
   logSection('📊 Lock Summary');
   console.log(`  ✅ Trade ID: ${state.tradeId}`);
   console.log(`  ✅ Lock transaction: ${sentTx.hash.slice(0, 10)}...${sentTx.hash.slice(-10)}`);
+  console.log(`  ✅ Settlement transaction: ${settleSentTx.hash.slice(0, 10)}...${settleSentTx.hash.slice(-10)}`);
   console.log(`  ✅ Claimant set to: Bob (${accounts.bob.address.toBase58().slice(0, 20)}...)`);
   console.log(`  ✅ Amount locked: ${Number(state.amount) / 1e9} MINA`);
+  console.log(`  ✅ Offchain state settled and queryable`);
   console.log(`  🪙 MOCK: ZEC transaction confirmed (${mockZecTxHash.slice(0, 10)}...)`);
 
   logSection('🎯 Next Step');

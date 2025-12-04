@@ -6,8 +6,16 @@ dotenv.config();
 
 // Constants
 export const ZEKO_DEVNET_ENDPOINT = 'https://devnet.zeko.io/graphql';
-export const CONTRACT_ADDRESS = 'B62qmg7giAqEhf7UdZamqYumnQotExwQFXEeuuW2Yze7V67ZtgFKNmo';
-export const FEE = 400_000_000; // 0.4 MINA
+
+// Derive contract address from ESCROW_KEY in .env
+const escrowKeyBase58 = process.env.ESCROW_KEY;
+if (!escrowKeyBase58) {
+  throw new Error('Missing ESCROW_KEY in .env file');
+}
+const escrowKey = PrivateKey.fromBase58(escrowKeyBase58);
+export const CONTRACT_ADDRESS = escrowKey.toPublicKey().toBase58();
+
+export const FEE = 1000_000_000; // 1 MINA
 export const ZEKO_CONFIRMATION_WAIT = 20000; // 20 seconds
 
 // Test accounts interface
@@ -26,9 +34,13 @@ export function logHeader(title: string): void {
   const leftPad = Math.floor(padding / 2);
   const rightPad = Math.ceil(padding / 2);
 
-  console.log('\n╔════════════════════════════════════════════════════════════════╗');
+  console.log(
+    '\n╔════════════════════════════════════════════════════════════════╗'
+  );
   console.log(`║  ${' '.repeat(leftPad)}${title}${' '.repeat(rightPad)}  ║`);
-  console.log('╚════════════════════════════════════════════════════════════════╝\n');
+  console.log(
+    '╚════════════════════════════════════════════════════════════════╝\n'
+  );
 }
 
 export function logSection(title: string): void {
@@ -179,7 +191,10 @@ export async function getBalance(address: PublicKey): Promise<string> {
   }
 }
 
-export async function logBalances(accounts: TestAccounts, contractAddress?: PublicKey): Promise<void> {
+export async function logBalances(
+  accounts: TestAccounts,
+  contractAddress?: PublicKey
+): Promise<void> {
   logSection('💰 Account Balances');
 
   const aliceBalance = await getBalance(accounts.alice.address);
@@ -208,7 +223,7 @@ export async function waitForConfirmation(): Promise<void> {
   const waitSeconds = ZEKO_CONFIRMATION_WAIT / 1000;
   for (let i = waitSeconds; i > 0; i -= 5) {
     console.log(`  ${i}s remaining...`);
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 
   logSuccess('Confirmation period complete');

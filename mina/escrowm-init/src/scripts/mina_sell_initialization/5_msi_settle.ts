@@ -1,4 +1,4 @@
-import { Mina, PublicKey } from 'o1js';
+import { Mina, PublicKey, fetchAccount } from 'o1js';
 import {
   setupNetwork,
   loadTestAccounts,
@@ -117,6 +117,10 @@ async function main() {
   console.log(`  Submitter: Operator (${accounts.operator.address.toBase58()})`);
   console.log(`  Contract: ${CONTRACT_ADDRESS}`);
   console.log(`  Fee: ${FEE / 1e9} MINA`);
+
+  // Fetch latest account state to ensure fresh nonce
+  logInfo('Fetching latest Operator account state...');
+  await fetchAccount({ publicKey: accounts.operator.address });
 
   logInfo('Building settlement transaction...');
 

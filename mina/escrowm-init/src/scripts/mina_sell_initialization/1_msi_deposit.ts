@@ -1,4 +1,4 @@
-import { Mina, UInt64 } from 'o1js';
+import { Mina, UInt64, fetchAccount } from 'o1js';
 import {
   setupNetwork,
   loadTestAccounts,
@@ -141,14 +141,73 @@ async function main() {
   await logBalances(accounts, PublicKey.fromBase58(CONTRACT_ADDRESS));
 
   // ============================================================================
+  // STEP 12: Generate Settlement Proof
+  // ============================================================================
+
+  logSection('⚡ Generating Settlement Proof');
+  console.log('  ⚠️  Settlement proof generation takes 5-6 minutes');
+  console.log('  This commits the deposit to offchain state');
+  console.log('  Please be patient...\n');
+
+  logInfo('Starting proof generation...');
+  console.log(`  Started at: ${new Date().toLocaleTimeString()}`);
+
+  const proofStartTime = Date.now();
+  const settlementProof = await zkApp.offchainState.createSettlementProof();
+  const proofDuration = ((Date.now() - proofStartTime) / 1000 / 60).toFixed(2);
+
+  logSuccess(`Settlement proof generated in ${proofDuration} minutes`);
+  console.log(`  Completed at: ${new Date().toLocaleTimeString()}`);
+
+  // ============================================================================
+  // STEP 13: Submit Settlement Transaction
+  // ============================================================================
+
+  logSection('📤 Submitting Settlement Transaction');
+
+  // Fetch latest account state to ensure fresh nonce
+  logInfo('Fetching latest Operator account state...');
+  await fetchAccount({ publicKey: accounts.operator.address });
+
+  logInfo('Building settlement transaction...');
+  const settleTxn = await Mina.transaction(
+    { sender: accounts.operator.address, fee: FEE },
+    async () => {
+      await zkApp.settle(settlementProof);
+    }
+  );
+
+  logSuccess('Transaction built');
+
+  logInfo('Generating transaction proof...');
+  await settleTxn.prove();
+  logSuccess('Transaction proof generated');
+
+  logInfo('Signing transaction with Operator key...');
+  const settleSentTx = await settleTxn.sign([accounts.operator.key]).send();
+
+  logSection('✅ Settlement Transaction Sent');
+  console.log(`  Transaction Hash: ${settleSentTx.hash}`);
+  console.log(`  Explorer: https://zekoscan.io/testnet/tx/${settleSentTx.hash}`);
+
+  // ============================================================================
+  // STEP 14: Wait for Settlement Confirmation
+  // ============================================================================
+
+  await waitForConfirmation();
+
+  logSuccess('Deposit settled on-chain - offchain state is now queryable');
+
+  // ============================================================================
   // SUMMARY
   // ============================================================================
 
   logSection('📊 Deposit Summary');
   console.log(`  ✅ Alice deposited: ${Number(state.amount) / 1e9} MINA`);
-  console.log(`  ✅ Transaction: ${sentTx.hash.slice(0, 10)}...${sentTx.hash.slice(-10)}`);
+  console.log(`  ✅ Deposit transaction: ${sentTx.hash.slice(0, 10)}...${sentTx.hash.slice(-10)}`);
+  console.log(`  ✅ Settlement transaction: ${settleSentTx.hash.slice(0, 10)}...${settleSentTx.hash.slice(-10)}`);
   console.log(`  ✅ Trade ID: ${state.tradeId}`);
-  console.log(`  ⚠️  Offchain state not yet settled (will be settled later)`);
+  console.log(`  ✅ Offchain state settled and queryable`);
 
   logSection('🎯 Next Step');
   console.log('  Run: node build/src/scripts/mina_sell_initialization/2_msi_verify_deposit.js');

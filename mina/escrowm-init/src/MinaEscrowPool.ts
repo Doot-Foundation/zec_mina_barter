@@ -41,7 +41,7 @@ export class TradeData extends Struct({
     amount: UInt64,
     refundAddress: PublicKey,
     depositBlockHeight: UInt32,
-    expiryBlocks: number = 960  // ~2 days at 3min/block
+    expiryBlocks: number = 2000  // ~2 days buffer for Zeko L2 slots
   ): TradeData {
     return new TradeData({
       tradeId,
@@ -161,8 +161,9 @@ export class MinaEscrowPool extends SmartContract {
     const existingTrade = await this.offchainState.fields.trades.get(tradeId);
     existingTrade.isSome.assertFalse(); // Trade must not exist
 
-    // Get current block height for expiry calculation
-    const currentHeight = this.network.blockchainLength.getAndRequireEquals();
+    // Note: Network preconditions removed - middleware handles expiry logic
+    // Using zero values for deposit/expiry heights (stored for reference only)
+    const depositHeight = UInt32.from(0);
 
     // Create trade record
     const trade = TradeData.create(
@@ -170,7 +171,7 @@ export class MinaEscrowPool extends SmartContract {
       depositor,
       amount,
       refundAddress,
-      currentHeight
+      depositHeight
     );
 
     // Store in OffchainState using update pattern

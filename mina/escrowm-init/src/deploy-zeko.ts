@@ -1,4 +1,4 @@
-import { Mina, PrivateKey, AccountUpdate, fetchAccount } from 'o1js';
+import { Mina, PrivateKey, AccountUpdate, fetchAccount, PublicKey } from 'o1js';
 import { MinaEscrowPool, offchainState } from './MinaEscrowPool.js';
 import dotenv from 'dotenv';
 
@@ -16,7 +16,70 @@ dotenv.config();
 
 // Configuration
 const ZEKO_DEVNET_ENDPOINT = 'https://devnet.zeko.io/graphql';
-const FEE = 400_000_000; // 0.4 MINA
+const FEE = 1000_000_000; // 1 MINA
+
+/**
+ * Fetch account with retry logic to handle network issues
+ */
+async function fetchAccountWithRetry(
+  accountInfo: { publicKey: PublicKey },
+  maxRetries = 5
+): Promise<void> {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      await fetchAccount(accountInfo);
+      return;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(
+        `  Fetch attempt ${i + 1}/${maxRetries} failed: ${errorMsg}`
+      );
+      if (i === maxRetries - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1))); // Exponential backoff
+    }
+  }
+}
+
+/**
+ * Send transaction with retry logic for network errors
+ */
+async function sendTransactionWithRetry(
+  transaction: any,
+  maxRetries = 3
+): Promise<any> {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(
+        `  Sending transaction (attempt ${attempt}/${maxRetries})...`
+      );
+      const pendingTx = await transaction.send();
+      console.log(`  ✓ Transaction sent: ${pendingTx.hash}`);
+      return pendingTx;
+    } catch (error: any) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.warn(`  ⚠️  Send attempt ${attempt} failed: ${errorMsg}`);
+
+      // Check if error is retryable (network issues)
+      const isRetryable =
+        errorMsg.includes('502') ||
+        errorMsg.includes('Bad Gateway') ||
+        errorMsg.includes('ECONNRESET') ||
+        errorMsg.includes('ETIMEDOUT') ||
+        errorMsg.includes('network') ||
+        errorMsg.includes('timeout');
+
+      if (!isRetryable || attempt === maxRetries) {
+        throw error;
+      }
+
+      // Exponential backoff
+      const backoffMs = Math.pow(2, attempt) * 2000; // 4s, 8s, 16s
+      console.log(`  Retrying after ${backoffMs}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+  }
+  throw new Error('Failed to send transaction after all retries');
+}
 
 async function main() {
   console.log('=== MinaEscrowPool Deployment to Zeko L2 Devnet ===\n');
@@ -54,9 +117,11 @@ async function main() {
   // Check deployer balance
   console.log('Fetching deployer account...');
   try {
-    await fetchAccount({ publicKey: deployerAddress });
+    await fetchAccountWithRetry({ publicKey: deployerAddress });
     const deployerBalance = Mina.getBalance(deployerAddress);
-    console.log(`Deployer balance: ${Number(deployerBalance.toBigInt()) / 1e9} MINA`);
+    console.log(
+      `Deployer balance: ${Number(deployerBalance.toBigInt()) / 1e9} MINA`
+    );
 
     if (deployerBalance.toBigInt() < BigInt(FEE * 10)) {
       console.warn('⚠️  Low balance! Need at least 1 MINA for deployment');
@@ -79,8 +144,8 @@ async function main() {
   // Compile contract
   console.log('Compiling MinaEscrowPool...');
   const startCompile = Date.now();
-  await offchainState.compile();  // FIRST
-  const { verificationKey } = await MinaEscrowPool.compile();  // SECOND
+  await offchainState.compile(); // FIRST
+  const { verificationKey } = await MinaEscrowPool.compile(); // SECOND
   const compileTime = ((Date.now() - startCompile) / 1000).toFixed(2);
   console.log(`✓ Compiled in ${compileTime}s`);
   console.log(`Verification key hash: ${verificationKey.hash.toString()}`);
@@ -105,40 +170,54 @@ async function main() {
   console.log('Proving deployment transaction...');
   await deployTxn.prove();
 
-  console.log('Signing and sending...');
-  const sentTx = await deployTxn.sign([deployerKey, zkAppKey]).send();
+  console.log('Signing and sending deployment...');
+  const signedDeployTxn = deployTxn.sign([deployerKey, zkAppKey]);
+  const sentTx = await sendTransactionWithRetry(signedDeployTxn);
 
   const deployTime = ((Date.now() - startDeploy) / 1000).toFixed(2);
   console.log(`✓ Deployed in ${deployTime}s`);
   console.log('Transaction hash:', sentTx.hash);
   console.log('');
 
-  // Wait for transaction
-  console.log('Waiting for Zeko L2 confirmation (20s)...');
-  await new Promise(resolve => setTimeout(resolve, 20000));
-  console.log('✓ Transaction confirmed');
+  // Wait for transaction to be fully processed
+  console.log('Waiting for Zeko L2 confirmation (30s)...');
+  await new Promise((resolve) => setTimeout(resolve, 30000));
+  console.log('✓ Deployment transaction confirmed');
+  console.log('');
+
+  // CRITICAL: Refresh account states before next transaction to avoid nonce conflicts
+  console.log('Refreshing account states before initialization...');
+  await fetchAccountWithRetry({ publicKey: zkAppAddress });
+  await fetchAccountWithRetry({ publicKey: operatorAddress });
+  console.log('✓ Account states refreshed');
   console.log('');
 
   // Initialize operator
   console.log('Initializing operator...');
   const initTxn = await Mina.transaction(
-    { sender: operatorAddress, fee: FEE },
+    { sender: operatorAddress, fee: FEE, memo: 'Doot:Barter Init Operator' },
     async () => {
       await zkApp.initOperator();
     }
   );
 
+  console.log('Proving initialization transaction...');
   await initTxn.prove();
-  const initSentTx = await initTxn.sign([operatorKey]).send();
-  console.log('Transaction hash:', initSentTx.hash);
 
-  await new Promise(resolve => setTimeout(resolve, 20000));
+  console.log('Signing and sending initialization...');
+  const signedInitTxn = initTxn.sign([operatorKey]);
+  const initSentTx = await sendTransactionWithRetry(signedInitTxn);
+  console.log('Initialization transaction hash:', initSentTx.hash);
+  console.log('');
+
+  console.log('Waiting for initialization confirmation (30s)...');
+  await new Promise((resolve) => setTimeout(resolve, 30000));
   console.log('✓ Operator initialized');
   console.log('');
 
   // Verify deployment
   console.log('Verifying deployment...');
-  await fetchAccount({ publicKey: zkAppAddress });
+  await fetchAccountWithRetry({ publicKey: zkAppAddress });
   const operatorState = zkApp.operator.get();
 
   console.log('Contract deployed:', zkAppAddress.toBase58());
@@ -163,13 +242,21 @@ async function main() {
   console.log(`Deployer Address: ${deployerAddress.toBase58()}`);
   console.log('');
   console.log('=== Explorer Links ===');
-  console.log(`Contract: https://zekoscan.io/testnet/account/${zkAppAddress.toBase58()}`);
-  console.log(`Operator: https://zekoscan.io/testnet/account/${operatorAddress.toBase58()}`);
+  console.log(
+    `Contract: https://zekoscan.io/testnet/account/${zkAppAddress.toBase58()}`
+  );
+  console.log(
+    `Operator: https://zekoscan.io/testnet/account/${operatorAddress.toBase58()}`
+  );
   console.log('');
   console.log('=== Next Steps ===');
   console.log('1. Copy the middleware configuration above to middleware/.env');
-  console.log('2. Fund the operator account with some MINA for transaction fees');
-  console.log('3. Start the middleware: cd middleware && npm run build && npm start');
+  console.log(
+    '2. Fund the operator account with some MINA for transaction fees'
+  );
+  console.log(
+    '3. Start the middleware: cd middleware && npm run build && npm start'
+  );
   console.log('4. Monitor trades on ZekoScan explorer');
   console.log('');
   console.log('💡 Tip: Save these addresses and keys securely!');

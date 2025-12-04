@@ -1,7 +1,7 @@
-import { config } from './config.js';
-import { logger } from './logger.js';
-import { minaClient } from './mina-client.js';
-import { getContractModules } from './contract-loader.js';
+import { config } from "./config.js";
+import { logger } from "./logger.js";
+import { minaClient } from "./mina-client.js";
+import { getContractModules } from "./contract-loader.js";
 
 /**
  * Settlement Worker
@@ -34,7 +34,7 @@ export class SettlementWorker {
    */
   async start() {
     if (this.isRunning) {
-      logger.warn('Settlement worker already running');
+      logger.warn("Settlement worker already running");
       return;
     }
 
@@ -74,7 +74,7 @@ export class SettlementWorker {
       this.intervalId = null;
     }
 
-    logger.info('Settlement worker stopped');
+    logger.info("Settlement worker stopped");
   }
 
   /**
@@ -82,7 +82,7 @@ export class SettlementWorker {
    */
   private async checkAndSettle() {
     try {
-      logger.debug('--- Settlement check start ---');
+      logger.debug("--- Settlement check start ---");
 
       // Get pending actions count
       const pendingActionsCount = await minaClient.getPendingActionsCount();
@@ -91,7 +91,7 @@ export class SettlementWorker {
         logger.info(
           `Found ${pendingActionsCount} pending actions (threshold: ${this.minActionsThreshold})`
         );
-        logger.info('Triggering settlement...');
+        logger.info("Triggering settlement...");
 
         await this.triggerSettlement();
       } else {
@@ -100,9 +100,12 @@ export class SettlementWorker {
         );
       }
 
-      logger.debug('--- Settlement check end ---');
+      logger.debug("--- Settlement check end ---");
     } catch (error) {
       logger.error(`Settlement check failed: ${error}`);
+      logger.error(
+        `Stack trace: ${error instanceof Error ? error.stack : "N/A"}`
+      );
     }
   }
 
@@ -111,9 +114,9 @@ export class SettlementWorker {
    */
   private async triggerSettlement() {
     try {
-      logger.info('=== SETTLEMENT PROOF GENERATION STARTING ===');
-      logger.info('This will take approximately 5-6 minutes...');
-      logger.info('');
+      logger.info("=== SETTLEMENT PROOF GENERATION STARTING ===");
+      logger.info("This will take approximately 5-6 minutes...");
+      logger.info("");
 
       const startTime = Date.now();
 
@@ -121,37 +124,50 @@ export class SettlementWorker {
       const modules = getContractModules();
 
       // Generate settlement proof (CPU-intensive, ~5-6 minutes)
-      logger.info('[1/2] Generating settlement proof...');
+      logger.info("[1/2] Generating settlement proof...");
       const proofStartTime = Date.now();
 
       const proof = await modules.offchainState.createSettlementProof();
 
       const proofDuration = ((Date.now() - proofStartTime) / 1000).toFixed(2);
       logger.info(`✓ Settlement proof generated in ${proofDuration}s`);
-      logger.info('');
+      logger.info("");
 
       // Submit proof to contract
-      logger.info('[2/2] Submitting settlement proof...');
+      logger.info("[2/2] Submitting settlement proof...");
       const submitStartTime = Date.now();
 
       const txHash = await minaClient.submitSettlementProof(proof);
 
       if (!txHash) {
-        throw new Error('Failed to submit settlement proof');
+        throw new Error("Failed to submit settlement proof");
       }
 
       const submitDuration = ((Date.now() - submitStartTime) / 1000).toFixed(2);
       logger.info(`✓ Proof submitted in ${submitDuration}s`);
-      logger.info('');
+      logger.info("");
 
       const totalDuration = ((Date.now() - startTime) / 1000).toFixed(2);
-      logger.info('=== SETTLEMENT COMPLETE ===');
+      logger.info("=== SETTLEMENT COMPLETE ===");
       logger.info(`Total time: ${totalDuration}s`);
       logger.info(`Transaction: ${txHash}`);
-      logger.info('');
+      logger.info("");
     } catch (error) {
       logger.error(`Settlement failed: ${error}`);
-      logger.error('Will retry on next check cycle');
+      logger.error(
+        `Stack trace: ${error instanceof Error ? error.stack : "N/A"}`
+      );
+      logger.error("Will retry on next check cycle");
+      logger.error("");
+      logger.error("Common issues:");
+      logger.error(
+        "  - Account_nonce_precondition_unsatisfied: Concurrent transactions from operator"
+      );
+      logger.error(
+        "  - Insufficient balance: Operator needs funds for settlement fees (1 MINA per settlement)"
+      );
+      logger.error("  - Network issues: Check GraphQL endpoint connectivity");
+      logger.error("");
     }
   }
 }
