@@ -42,15 +42,38 @@ export class EscrowdManager {
       // Spawn escrowdv2 process
       const escrowdPath = config.escrowd.binaryPath || 'cargo';
       const args = escrowdPath === 'cargo'
-        ? ['run', '--release', '--', '--port', port.toString(), '--api-key', apiKey]
-        : ['--port', port.toString(), '--api-key', apiKey];
+        ? ['run', '--release']
+        : [];
 
       const child = spawn(escrowdPath, args, {
         cwd: config.escrowd.workingDir || process.cwd(),
         env: {
           ...process.env,
-          RUST_LOG: 'info',
+          // Per-trade configuration
+          LISTEN_ADDR: `127.0.0.1:${port}`,
+          API_KEY: apiKey,
+          DATA_DIR: `./data/${tradeId}`,
           TRADE_ID: tradeId,
+          // Logging
+          RUST_LOG: 'info',
+          // Network configuration (inherit from parent env or use defaults)
+          NETWORK: process.env.NETWORK || 'testnet',
+          LIGHTWALLETD_URL: process.env.LIGHTWALLETD_URL || 'http://127.0.0.1:9067',
+          ZCASHD_RPC_URL: process.env.ZCASHD_RPC_URL || 'http://127.0.0.1:18232',
+          ZCASHD_RPC_USER: process.env.ZCASHD_RPC_USER || 'zcashrpc',
+          ZCASHD_RPC_PASS: process.env.ZCASHD_RPC_PASS || 'changeme',
+          // Mina integration
+          MINA_ENDPOINT: process.env.MINA_ENDPOINT || 'https://api.minascan.io/archive/devnet/v1/graphql',
+          MINA_TO_PUBKEY: process.env.MINA_TO_PUBKEY || '',
+          // Operational parameters
+          ESCROW_ADDR_TYPE: process.env.ESCROW_ADDR_TYPE || 'shielded',
+          FEE_CAP_MULTIPLIER: process.env.FEE_CAP_MULTIPLIER || '5.0',
+          FUNDING_MIN_ZEC: process.env.FUNDING_MIN_ZEC || '0.001',
+          MINA_MIN_AMOUNT: process.env.MINA_MIN_AMOUNT || '0.001',
+          OPERATOR_TOKEN: process.env.OPERATOR_TOKEN || '',
+          // Zcash params paths
+          SAPLING_SPEND_PATH: process.env.SAPLING_SPEND_PATH || `${process.env.HOME}/.zcash-params/sapling-spend.params`,
+          SAPLING_OUTPUT_PATH: process.env.SAPLING_OUTPUT_PATH || `${process.env.HOME}/.zcash-params/sapling-output.params`,
         },
         detached: false,
         stdio: ['ignore', 'pipe', 'pipe'],

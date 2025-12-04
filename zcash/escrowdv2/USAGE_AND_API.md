@@ -3,6 +3,7 @@
 How to run the escrow daemon against zcashd testnet via lightwalletd, and how to call the available endpoints.
 
 ## Prerequisites
+
 - `zcashd` testnet running with `-experimentalfeatures` and `-lightwalletd` flags (full node, no pruning - required for lightwalletd)
 - `lightwalletd` running and synced, exposing gRPC on port 9067
 - RPC creds available: `ZCASHD_RPC_USER`, `ZCASHD_RPC_PASS`, `ZCASHD_RPC_URL` (default `http://127.0.0.1:18232`)
@@ -23,6 +24,7 @@ How to run the escrow daemon against zcashd testnet via lightwalletd, and how to
 ## Architecture Differences from v1
 
 **escrowdv2** uses the Zcash Rust SDK (`zcash_client_backend`, `zcash_client_sqlite`) instead of direct zcashd RPC:
+
 - **Wallet sync**: Via lightwalletd gRPC (compact blocks) instead of full RPC polling
 - **Local database**: SQLite wallet database in `DATA_DIR/lightwalletd/` stores notes, transactions, and sync state
 - **Self-signing**: Transaction signing happens locally using the Zcash SDK, not via zcashd RPC
@@ -45,6 +47,7 @@ RUST_LOG=info cargo run
 ```
 
 **Typical `.env` configuration**:
+
 ```bash
 LISTEN_ADDR=127.0.0.1:8080
 DATA_DIR=./data
@@ -104,6 +107,7 @@ RUST_LOG=info cargo run
 ```
 
 Each instance:
+
 - Creates its own escrow address and wallet database in `DATA_DIR/lightwalletd/`
 - Syncs independently via lightwalletd
 - Exposes `/address` endpoint with its unique address
@@ -117,9 +121,11 @@ All requests are JSON over HTTP. Operator endpoints (`/set-in-transit`, `/send-t
 ### Public Endpoints
 
 #### `GET /health`
+
 Health check endpoint.
 
 **Response**:
+
 ```json
 {
   "status": "ok"
@@ -127,16 +133,20 @@ Health check endpoint.
 ```
 
 #### `GET /address`
+
 Get the escrow address to fund.
 
 **Response**:
+
 ```json
 {
   "address": "ztestsapling1...",
   "type": "shielded"
 }
 ```
+
 or
+
 ```json
 {
   "address": "tmXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
@@ -145,9 +155,11 @@ or
 ```
 
 #### `GET /balance`
+
 Get current escrow balance (requires wallet sync).
 
 **Response**:
+
 ```json
 {
   "balance": "0.001",
@@ -156,9 +168,11 @@ Get current escrow balance (requires wallet sync).
 ```
 
 #### `GET /status`
+
 Get current escrow state.
 
 **Response**:
+
 ```json
 {
   "verified": false,
@@ -169,6 +183,7 @@ Get current escrow state.
 ```
 
 When bound:
+
 ```json
 {
   "verified": true,
@@ -182,6 +197,7 @@ When bound:
 ```
 
 After `/set-in-transit`:
+
 ```json
 {
   "verified": true,
@@ -197,9 +213,11 @@ After `/set-in-transit`:
 ### Funding Endpoints
 
 #### `POST /funding/shielded`
+
 Bind shielded funding with on-chain verification.
 
 **Request**:
+
 ```json
 {
   "api_key": "change_me",
@@ -209,6 +227,7 @@ Bind shielded funding with on-chain verification.
 ```
 
 **Flow**:
+
 1. Verifies `api_key` matches `API_KEY`
 2. Queries wallet database for received notes with matching memo
 3. Verifies amount >= `FUNDING_MIN_ZEC`
@@ -216,6 +235,7 @@ Bind shielded funding with on-chain verification.
 5. Sets `verified=true`
 
 **Success Response** (200):
+
 ```json
 {
   "message": "Funding verified and origin bound"
@@ -223,14 +243,17 @@ Bind shielded funding with on-chain verification.
 ```
 
 **Errors**:
+
 - `401 Unauthorized`: Invalid `api_key` or memo mismatch
 - `402 Payment Required (FundingNotFound)`: No matching note found on-chain with amount >= `FUNDING_MIN_ZEC`
 - `409 Conflict (AlreadyBound)`: Origin already bound (single-tenant enforcement)
 
 #### `POST /funding/transparent`
+
 Bind transparent funding with signature and on-chain verification.
 
 **Request**:
+
 ```json
 {
   "api_key": "change_me",
@@ -240,11 +263,13 @@ Bind transparent funding with signature and on-chain verification.
 ```
 
 **Signed Message Format**:
+
 ```
 I approve these funds for the Barter Swap. api_key: <API_KEY> escrow_addr: <ESCROW_ADDRESS>
 ```
 
 **Flow**:
+
 1. Verifies `api_key` matches `API_KEY`
 2. Verifies signature against `funding_address`
 3. Queries wallet balance at escrow address
@@ -253,6 +278,7 @@ I approve these funds for the Barter Swap. api_key: <API_KEY> escrow_addr: <ESCR
 6. Sets `verified=true`
 
 **Success Response** (200):
+
 ```json
 {
   "message": "Funding verified and origin bound"
@@ -260,6 +286,7 @@ I approve these funds for the Barter Swap. api_key: <API_KEY> escrow_addr: <ESCR
 ```
 
 **Errors**:
+
 - `401 Unauthorized`: Invalid `api_key` or signature verification failure
 - `402 Payment Required (InsufficientFunds)`: Balance below `FUNDING_MIN_ZEC`
 - `409 Conflict (AlreadyBound)`: Origin already bound
@@ -267,14 +294,17 @@ I approve these funds for the Barter Swap. api_key: <API_KEY> escrow_addr: <ESCR
 ### Operator Endpoints (Localhost + Bearer Token Required)
 
 #### `POST /set-in-transit`
+
 Mark Mina payment as received and lock escrow for forward sweep.
 
 **Headers**:
+
 ```
 Authorization: Bearer <OPERATOR_TOKEN>
 ```
 
 **Request**:
+
 ```json
 {
   "mina_tx_hash": "5JuGW..."
@@ -282,6 +312,7 @@ Authorization: Bearer <OPERATOR_TOKEN>
 ```
 
 **Flow**:
+
 1. Validates operator token and localhost origin
 2. Requires `verified=true`
 3. Validates Mina transaction via GraphQL:
@@ -291,6 +322,7 @@ Authorization: Bearer <OPERATOR_TOKEN>
 4. Stores `mina_tx_hash` and sets `in_transit=true`
 
 **Success Response** (200):
+
 ```json
 {
   "message": "In-transit state set",
@@ -299,18 +331,22 @@ Authorization: Bearer <OPERATOR_TOKEN>
 ```
 
 **Errors**:
+
 - `403 Forbidden`: Missing/invalid operator token or non-localhost request
 - `412 Precondition Failed`: Mina tx validation failed or escrow not verified
 
 #### `POST /send-target`
+
 Sweep escrow balance to target address (forward path).
 
 **Headers**:
+
 ```
 Authorization: Bearer <OPERATOR_TOKEN>
 ```
 
 **Request**:
+
 ```json
 {
   "target_address": "ztestsapling1..."
@@ -318,6 +354,7 @@ Authorization: Bearer <OPERATOR_TOKEN>
 ```
 
 **Flow**:
+
 1. Validates operator token and localhost origin
 2. Requires `verified=true` and `in_transit=true`
 3. Creates transaction sending full balance to `target_address`
@@ -326,6 +363,7 @@ Authorization: Bearer <OPERATOR_TOKEN>
 6. Schedules graceful shutdown after 60s
 
 **Success Response** (200):
+
 ```json
 {
   "txid": "abc123..."
@@ -333,6 +371,7 @@ Authorization: Bearer <OPERATOR_TOKEN>
 ```
 
 **Errors**:
+
 - `403 Forbidden`: Missing/invalid operator token or non-localhost request
 - `412 Precondition Failed (TransitMismatch)`: Called when `in_transit=false`
 - `412 Precondition Failed (NotVerified)`: Escrow not verified
@@ -340,9 +379,11 @@ Authorization: Bearer <OPERATOR_TOKEN>
 ### Refund Endpoint
 
 #### `POST /send-back`
+
 Sweep escrow balance back to origin address (refund path).
 
 **Request (Shielded)**:
+
 ```json
 {
   "api_key": "change_me"
@@ -350,6 +391,7 @@ Sweep escrow balance back to origin address (refund path).
 ```
 
 **Request (Transparent)**:
+
 ```json
 {
   "api_key": "change_me",
@@ -358,6 +400,7 @@ Sweep escrow balance back to origin address (refund path).
 ```
 
 **Flow**:
+
 1. Verifies `api_key` matches `API_KEY`
 2. Requires `verified=true` and `in_transit=false`
 3. For transparent origin, verifies signed message
@@ -366,6 +409,7 @@ Sweep escrow balance back to origin address (refund path).
 6. Schedules graceful shutdown after 60s
 
 **Success Response** (200):
+
 ```json
 {
   "txid": "abc123..."
@@ -373,6 +417,7 @@ Sweep escrow balance back to origin address (refund path).
 ```
 
 **Errors**:
+
 - `401 Unauthorized`: Invalid `api_key` or signature failure (transparent)
 - `412 Precondition Failed (TransitMismatch)`: Called when `in_transit=true`
 - `412 Precondition Failed (NotVerified)`: Called when `verified=false`
@@ -381,9 +426,11 @@ Sweep escrow balance back to origin address (refund path).
 ### Admin Endpoint (Localhost Only)
 
 #### `POST /bind-origin`
+
 Manual origin binding without on-chain verification (testing/recovery only).
 
 **Request**:
+
 ```json
 {
   "api_key": "change_me",
@@ -393,6 +440,7 @@ Manual origin binding without on-chain verification (testing/recovery only).
 ```
 
 **Flow**:
+
 1. Validates `api_key`
 2. Binds `origin_address` with specified type
 3. Sets `verified=true` **without on-chain checks**
@@ -403,18 +451,21 @@ Manual origin binding without on-chain verification (testing/recovery only).
 ## Sequence of Events (Common UI Flow)
 
 ### 1. Start escrowdv2
+
 ```bash
 cd zcash/escrowdv2
 RUST_LOG=info cargo run
 ```
 
 Daemon will:
+
 - Initialize wallet database in `DATA_DIR/lightwalletd/`
 - Generate escrow address (or recover if database exists)
 - Sync with lightwalletd (may take 1-30 minutes first time)
 - Start HTTP server on `LISTEN_ADDR`
 
 ### 2. Display escrow info to user
+
 ```bash
 # Get escrow address
 curl http://localhost:8080/address
@@ -425,6 +476,7 @@ curl http://localhost:8080/address
 ### 3. Funder sends funds
 
 **Shielded**:
+
 - Send to escrow address with memo exactly matching `api_key`
 - Example using zcash-cli:
   ```bash
@@ -433,6 +485,7 @@ curl http://localhost:8080/address
   ```
 
 **Transparent**:
+
 - Send to escrow address (any amount >= `FUNDING_MIN_ZEC`)
 - Sign message with funding address:
   ```bash
@@ -445,6 +498,7 @@ curl http://localhost:8080/address
 Wait for transaction to confirm (1-2 blocks), then:
 
 **Shielded**:
+
 ```bash
 curl -X POST http://localhost:8080/funding/shielded \
   -H "Content-Type: application/json" \
@@ -456,6 +510,7 @@ curl -X POST http://localhost:8080/funding/shielded \
 ```
 
 **Transparent**:
+
 ```bash
 curl -X POST http://localhost:8080/funding/transparent \
   -H "Content-Type: application/json" \
@@ -467,6 +522,7 @@ curl -X POST http://localhost:8080/funding/transparent \
 ```
 
 Verify binding:
+
 ```bash
 curl http://localhost:8080/status
 # Should show: verified=true, origin=...
@@ -486,6 +542,7 @@ curl -X POST http://localhost:8080/set-in-transit \
 ```
 
 Verify:
+
 ```bash
 curl http://localhost:8080/status
 # Should show: in_transit=true, mina_tx_hash="5JuGW..."
@@ -494,6 +551,7 @@ curl http://localhost:8080/status
 ### 6. Execute
 
 **Refund path** (if in_transit=false):
+
 ```bash
 # Shielded origin
 curl -X POST http://localhost:8080/send-back \
@@ -510,6 +568,7 @@ curl -X POST http://localhost:8080/send-back \
 ```
 
 **Forward path** (if in_transit=true):
+
 ```bash
 curl -X POST http://localhost:8080/send-target \
   -H "Authorization: Bearer test_operator_token_bf711b725d85f9095bf58b843803f95b" \
@@ -522,6 +581,7 @@ curl -X POST http://localhost:8080/send-target \
 ### 7. Teardown
 
 After successful sweep:
+
 - Process exits after 60 seconds
 - Wallet database preserved in `DATA_DIR/`
 - Start new instance for next trade
@@ -533,6 +593,7 @@ After successful sweep:
 **Location**: `DATA_DIR/lightwalletd/wallet.db`
 
 **If database corrupted**:
+
 1. Stop escrowdv2
 2. Delete `DATA_DIR/lightwalletd/`
 3. Restart escrowdv2
@@ -540,6 +601,7 @@ After successful sweep:
 5. Backup `wallet.db` regularly!
 
 **If lightwalletd unavailable**:
+
 - escrowdv2 cannot sync or create transactions
 - Wait for lightwalletd to come back online
 - Existing state preserved in `DATA_DIR/state.json`
@@ -549,6 +611,7 @@ After successful sweep:
 **Location**: `DATA_DIR/state.json`
 
 **Manual state editing** (use with caution):
+
 ```bash
 # View current state
 cat data/state.json | jq '.'
@@ -559,6 +622,7 @@ mv data/state.json.tmp data/state.json
 ```
 
 **Backup strategy**:
+
 ```bash
 # Backup before critical operations
 cp -r data/ data.backup.$(date +%s)/
@@ -571,6 +635,7 @@ cp -r data.backup.1733XXXXXX/ data/
 ### Crash Recovery
 
 **After unexpected shutdown**:
+
 1. Restart escrowdv2
 2. Wallet database loaded from `DATA_DIR/lightwalletd/`
 3. State loaded from `DATA_DIR/state.json`
@@ -578,6 +643,7 @@ cp -r data.backup.1733XXXXXX/ data/
 5. Check `/status` to verify state
 
 **If transaction was in-flight**:
+
 - Check wallet transaction history via `/balance` or direct DB query
 - Transaction may have been broadcast (check blockchain)
 - If not broadcast, retry the operation
@@ -585,6 +651,7 @@ cp -r data.backup.1733XXXXXX/ data/
 ### Checking Wallet Transactions
 
 **Using SQLite directly**:
+
 ```bash
 sqlite3 data/lightwalletd/wallet.db
 
@@ -605,6 +672,7 @@ SELECT * FROM received_notes;
 **Cause**: Corrupted wallet database from multiple failed starts.
 
 **Fix**:
+
 ```bash
 rm -rf data/lightwalletd/
 RUST_LOG=info cargo run
@@ -613,10 +681,12 @@ RUST_LOG=info cargo run
 ### Issue: "GetTreeState: z_gettreestate did not return treestate"
 
 **Cause**:
+
 - Zcashd not fully synced
 - Zcashd missing `-experimentalfeatures` and `-lightwalletd` flags
 
 **Fix**:
+
 1. Check zcashd sync: `curl --user zcashrpc:pass --data-binary '{"method":"getblockchaininfo"}' http://127.0.0.1:18232/`
 2. Verify flags: `docker logs zcashd-testnet | grep -E "experimentalfeatures|lightwalletd"`
 3. Wait for zcashd to sync more blocks
@@ -626,6 +696,7 @@ RUST_LOG=info cargo run
 **Cause**: Lightwalletd not running.
 
 **Fix**:
+
 ```bash
 # Check lightwalletd status
 docker ps | grep lightwalletd
@@ -642,6 +713,7 @@ docker logs -f lightwalletd
 **Symptoms**: `/balance` shows 0 despite confirmed funding.
 
 **Diagnosis**:
+
 ```bash
 # Check lightwalletd status
 curl http://localhost:9068/status
@@ -651,6 +723,7 @@ curl http://localhost:9068/status
 ```
 
 **Fix**:
+
 - Wait for initial sync to complete (can take 10-30 minutes)
 - Verify lightwalletd is synced with zcashd
 - Check `LIGHTWALLETD_URL` in `.env` is correct
@@ -660,6 +733,7 @@ curl http://localhost:9068/status
 **Cause**: Missing `OPERATOR_TOKEN` environment variable.
 
 **Fix**:
+
 ```bash
 # Add to .env
 echo 'OPERATOR_TOKEN=test_operator_token_bf711b725d85f9095bf58b843803f95b' >> .env
@@ -673,6 +747,7 @@ RUST_LOG=info cargo run
 **Symptoms**: `/send-target` or `/send-back` returns error.
 
 **Diagnosis**:
+
 ```bash
 # Check wallet balance
 curl http://localhost:8080/balance
@@ -682,6 +757,7 @@ tail -f data/lightwalletd/wallet.db.log
 ```
 
 **Fix**:
+
 - Ensure wallet fully synced
 - Check balance is sufficient (>= `FUNDING_MIN_ZEC`)
 - Verify lightwalletd is responsive
@@ -689,27 +765,32 @@ tail -f data/lightwalletd/wallet.db.log
 ## Security Considerations
 
 ### Key Storage
+
 - **Wallet database**: `DATA_DIR/lightwalletd/wallet.db` contains spending keys
   - Set permissions: `chmod 600 data/lightwalletd/wallet.db`
   - Backup securely
   - Never commit to git
 
 ### Operator Token
+
 - **OPERATOR_TOKEN**: Protects operator endpoints
   - Use cryptographically random tokens (32+ chars)
   - Keep secret from funders
   - Rotate regularly
 
 ### API Key
+
 - **API_KEY**: Shared with funder for binding
   - Generate unique per escrow instance
   - Transmit securely (not via unencrypted channels)
 
 ### Localhost Enforcement
+
 - Operator endpoints only accept localhost connections
 - Deploy firewall rules to restrict external access to `LISTEN_ADDR`
 
 ### Data Directory Permissions
+
 ```bash
 # Recommended permissions
 chmod 700 data/
@@ -759,6 +840,12 @@ cargo test
 
 # Integration tests (requires running services)
 cargo test --test integration -- --nocapture
+```
+
+### If start fails
+
+```bash
+rm -rf data/lightwalletd/ && set -a && source .env && set +a && RUST_LOG=info cargo run
 ```
 
 ## Resources

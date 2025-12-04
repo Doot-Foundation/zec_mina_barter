@@ -126,6 +126,7 @@ impl Config {
 
     /// Creates a test configuration with sensible defaults for testing
     /// This is always available to support integration tests
+    #[allow(dead_code)]
     pub fn default_test() -> Self {
         use tempfile::TempDir;
         let temp_dir = TempDir::new().expect("Failed to create temp dir");

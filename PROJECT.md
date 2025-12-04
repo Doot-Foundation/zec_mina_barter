@@ -25,14 +25,14 @@ This protocol enables **atomic swaps** between MINA and ZEC using a hybrid archi
 ## Architecture
 
 ```
-┌────────────────────────────────────────────────────┐
-│                    Middleware                       │
-│              (Stateless Coordinator)                │
-│                                                      │
-│  • Monitors both chains every 15s                   │
-│  • Locks both sides when both funded                │
-│  • No database - queries blockchain                 │
-└──────────────┬────────────────┬─────────────────────┘
+┌───────────────────────────────────────────────────┐
+│                    Middleware                     │
+│              (Stateless Coordinator)              │
+│                                                   │
+│  • Monitors both chains every 15s                 │
+│  • Locks both sides when both funded              │
+│  • No database - queries blockchain               │
+└──────────────┬────────────────┬───────────────────┘
                │                │
                ▼                ▼
     ┌──────────────────┐  ┌──────────────────┐
@@ -54,6 +54,7 @@ This protocol enables **atomic swaps** between MINA and ZEC using a hybrid archi
 **Technology**: o1js 2.0 with OffchainState
 
 **Key Features**:
+
 - **Shared Pool**: Single contract for all trades (privacy-preserving)
 - **OffchainState**: Unlimited trade capacity (~1 billion trades)
 - **Operator-Controlled**: Only operator can lock trades
@@ -61,6 +62,7 @@ This protocol enables **atomic swaps** between MINA and ZEC using a hybrid archi
 - **Settlement Proofs**: Batched off-chain state commitments (~5-6 min)
 
 **Methods**:
+
 - `deposit(tradeId, amount, refundAddress)` - User deposits MINA
 - `lockTrade(tradeId, claimant)` - Operator locks when ZEC funded
 - `claim(tradeId)` - Claimant withdraws MINA
@@ -69,6 +71,7 @@ This protocol enables **atomic swaps** between MINA and ZEC using a hybrid archi
 - `settle(proof)` - Commit off-chain state changes
 
 **Data Structure**:
+
 ```typescript
 TradeData {
   tradeId: Field,              // UUID as Poseidon hash
@@ -90,6 +93,7 @@ TradeData {
 **Technology**: Rust with Axum HTTP server, zcashd RPC backend
 
 **Key Features**:
+
 - **Per-Trade Instances**: Each trade gets dedicated escrowd
 - **Shielded Support**: Sapling shielded addresses
 - **Origin Binding**: One-time funding with verification
@@ -98,6 +102,7 @@ TradeData {
 - **Full Balance Sweeps**: Always sends entire balance
 
 **API Endpoints**:
+
 - `GET /address` - Get escrow address (shielded or transparent)
 - `GET /status` - Check verified/inTransit status
 - `POST /funding/shielded` - Bind shielded funding (with memo verification)
@@ -107,6 +112,7 @@ TradeData {
 - `POST /send-target` - Send to target (operator only, when locked)
 
 **State Machine**:
+
 ```
 UNVERIFIED → [funding] → VERIFIED
 VERIFIED → [set-in-transit] → IN_TRANSIT
@@ -121,6 +127,7 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 **Technology**: TypeScript with o1js integration
 
 **Key Features**:
+
 - **Stateless**: No database, all state from blockchain
 - **Archive-Driven**: Rebuilds OffchainState from archive actions
 - **Supabase Integration**: Keypairs table for address mapping
@@ -129,6 +136,7 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 - **Retry Logic**: 5 attempts with 60s backoff
 
 **Process Flow**:
+
 1. Poll MinaEscrowPool via archive (rebuild OffchainState map)
 2. For each active trade, poll corresponding escrowd instance
 3. When both funded and neither locked → lock both atomically
@@ -136,6 +144,7 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 5. If ZEC lock fails → emergency unlock MINA
 
 **Configuration**:
+
 - Operator private key (pays for Mina transactions)
 - MinaEscrowPool contract address
 - Escrowd base URL/port/range
@@ -166,9 +175,9 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 ```typescript
 // Alice calls deposit() on MinaEscrowPool
 await zkApp.deposit(
-  tradeIdField,                    // Field(0x550e8400...)
-  UInt64.from(10_000_000_000),     // 10 MINA in nanomina
-  aliceMinaRefundAddress           // Her refund address
+  tradeIdField, // Field(0x550e8400...)
+  UInt64.from(10_000_000_000), // 10 MINA in nanomina
+  aliceMinaRefundAddress // Her refund address
 );
 // OffchainState action emitted
 // Trade status: deposited, inTransit=false
@@ -215,11 +224,11 @@ await zkApp.lockTrade(tradeIdField, bobMinaAddress);
 // MINA trade now locked (inTransit=true, claimant=Bob)
 
 // Step 4b: Lock ZEC side
-const minaLockTxHash = "5Ju...";  // Hash from step 4a
+const minaLockTxHash = "5Ju..."; // Hash from step 4a
 await fetch(`http://127.0.0.1:8423/set-in-transit`, {
-  method: 'POST',
-  headers: { 'Authorization': `Bearer ${OPERATOR_TOKEN}` },
-  body: JSON.stringify({ mina_tx_hash: minaLockTxHash })
+  method: "POST",
+  headers: { Authorization: `Bearer ${OPERATOR_TOKEN}` },
+  body: JSON.stringify({ mina_tx_hash: minaLockTxHash }),
 });
 // ZEC escrowd validates Mina tx, sets inTransit=true
 // Both sides now locked atomically
@@ -252,9 +261,9 @@ await zkApp.claim(tradeIdField);
 // (or could be triggered manually by operator)
 const aliceZecAddress = lookupZcashAddress(minaTrade.depositor);
 await fetch(`http://127.0.0.1:8423/send-target`, {
-  method: 'POST',
-  headers: { 'Authorization': `Bearer ${OPERATOR_TOKEN}` },
-  body: JSON.stringify({ target_address: aliceZecAddress })
+  method: "POST",
+  headers: { Authorization: `Bearer ${OPERATOR_TOKEN}` },
+  body: JSON.stringify({ target_address: aliceZecAddress }),
 });
 // Alice receives 0.05 ZEC
 // escrowd instance exits and cleans up
@@ -309,11 +318,11 @@ await zkApp.refund(tradeIdField);
 
 // If ZEC not locked:
 await fetch(`http://127.0.0.1:8423/send-back`, {
-  method: 'POST',
+  method: "POST",
   body: JSON.stringify({
     api_key: "shared_secret",
-    signed_message: signature  // If transparent origin
-  })
+    signed_message: signature, // If transparent origin
+  }),
 });
 // Origin address gets ZEC back
 ```
@@ -324,17 +333,17 @@ await fetch(`http://127.0.0.1:8423/send-back`, {
 
 ### Trade Completion Timeline
 
-| Stage | Time | Network | Notes |
-|-------|------|---------|-------|
-| Alice deposits MINA | ~30s | Zeko L2 | Fast finality |
-| Bob deposits ZEC | ~5-10min | Zcash | Shielded confirmation |
-| Middleware detects | ~15s | Polling | Configurable interval |
-| Lock MINA | ~30s | Zeko L2 | Proof generation |
-| OffchainState settlement | ~5-6min | Batched | Automatic |
-| Lock ZEC | ~10s | API | HTTP call |
-| Bob claims MINA | ~30s | Zeko L2 | Proof generation |
-| Alice claims ZEC | ~10s | Zcash | Shielded sweep |
-| **Total** | **~12-18min** | End-to-end | Full cycle |
+| Stage                    | Time          | Network    | Notes                 |
+| ------------------------ | ------------- | ---------- | --------------------- |
+| Alice deposits MINA      | ~30s          | Zeko L2    | Fast finality         |
+| Bob deposits ZEC         | ~5-10min      | Zcash      | Shielded confirmation |
+| Middleware detects       | ~15s          | Polling    | Configurable interval |
+| Lock MINA                | ~30s          | Zeko L2    | Proof generation      |
+| OffchainState settlement | ~5-6min       | Batched    | Automatic             |
+| Lock ZEC                 | ~10s          | API        | HTTP call             |
+| Bob claims MINA          | ~30s          | Zeko L2    | Proof generation      |
+| Alice claims ZEC         | ~10s          | Zcash      | Shielded sweep        |
+| **Total**                | **~12-18min** | End-to-end | Full cycle            |
 
 ### Bottlenecks
 
@@ -362,25 +371,27 @@ await fetch(`http://127.0.0.1:8423/send-back`, {
 
 ### Attack Vectors & Mitigations
 
-| Attack | Mitigation |
-|--------|------------|
-| Middleware locks only one side | Atomic locking code + retry logic + emergency unlock |
-| User refunds after counterparty deposits | Operator lock prevents refunds |
-| Front-running deposits | Claimant assigned by operator after both funded |
-| Middleware downtime | Trades can be refunded (no loss scenario) |
-| Escrowd compromise | Single-trade impact, operator token required |
-| Double-spend on ZEC | Confirmation depth + zcashd verification |
-| Fake Mina tx for ZEC lock | escrowd validates tx on-chain via GraphQL |
+| Attack                                   | Mitigation                                           |
+| ---------------------------------------- | ---------------------------------------------------- |
+| Middleware locks only one side           | Atomic locking code + retry logic + emergency unlock |
+| User refunds after counterparty deposits | Operator lock prevents refunds                       |
+| Front-running deposits                   | Claimant assigned by operator after both funded      |
+| Middleware downtime                      | Trades can be refunded (no loss scenario)            |
+| Escrowd compromise                       | Single-trade impact, operator token required         |
+| Double-spend on ZEC                      | Confirmation depth + zcashd verification             |
+| Fake Mina tx for ZEC lock                | escrowd validates tx on-chain via GraphQL            |
 
 ### Privacy Considerations
 
 **MINA Side**:
+
 - ✅ Pool breaks linkability: Alice→Pool, Pool→Bob (not Alice→Bob)
 - ❌ Middleware knows full mapping (necessary for coordination)
 - ❌ On-chain amounts visible (OffchainState)
 - ⚠️ Timing analysis may correlate trades
 
 **ZEC Side**:
+
 - ✅ Shielded transactions hide sender/amount (ZK proofs)
 - ❌ Transparent fallback has full visibility
 - ✅ Memo privacy: Only escrowd and sender see memo
@@ -533,18 +544,21 @@ zec_barter/
 ### Roadmap
 
 **Short Term**:
+
 - [ ] Complete integration tests (135 tests deferred)
 - [ ] Web UI for trade creation
 - [ ] Monitoring dashboard
 - [ ] Automated escrowd spawning
 
 **Medium Term**:
+
 - [ ] Decentralized operator network
 - [ ] Order book (on-chain or off-chain)
 - [ ] Multi-asset support (USDC, BTC)
 - [ ] Partial fills
 
 **Long Term**:
+
 - [ ] Mainnet deployment
 - [ ] ZK privacy for MINA amounts
 - [ ] Cross-chain DEX integration
