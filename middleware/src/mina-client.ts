@@ -1,4 +1,6 @@
 import { Mina, PublicKey, Field } from "o1js";
+import fs from "fs";
+import path from "path";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import { MinaTrade } from "./types.js";
@@ -8,12 +10,69 @@ import {
   fetchAccountWithRetry,
 } from "./shared-contracts.js";
 
+// Persistent storage for tracked trade IDs so we can recover
+// across middleware restarts. This keeps coordinator behavior
+// robust without needing any extra database.
+const STATE_DIR = path.resolve(process.cwd(), ".state");
+const TRACKED_TRADES_FILE = path.join(STATE_DIR, "tracked-trades.json");
+
+function ensureStateDir() {
+  try {
+    if (!fs.existsSync(STATE_DIR)) {
+      fs.mkdirSync(STATE_DIR, { recursive: true });
+    }
+  } catch (error) {
+    logger.error(`[MinaClient] Failed to ensure state directory ${STATE_DIR}: ${error}`);
+  }
+}
+
+function loadTrackedTradesFromDisk(): string[] {
+  try {
+    if (!fs.existsSync(TRACKED_TRADES_FILE)) {
+      return [];
+    }
+    const raw = fs.readFileSync(TRACKED_TRADES_FILE, "utf8");
+    const data = JSON.parse(raw);
+    if (Array.isArray(data)) {
+      return data.filter((id) => typeof id === "string");
+    }
+    return [];
+  } catch (error) {
+    logger.warn(
+      `[MinaClient] Failed to load tracked trades from ${TRACKED_TRADES_FILE}: ${error}`,
+    );
+    return [];
+  }
+}
+
+function persistTrackedTrades(tradeIds: Set<string>) {
+  try {
+    ensureStateDir();
+    const list = Array.from(tradeIds.values());
+    fs.writeFileSync(TRACKED_TRADES_FILE, JSON.stringify(list, null, 2), "utf8");
+  } catch (error) {
+    logger.warn(
+      `[MinaClient] Failed to persist tracked trades to ${TRACKED_TRADES_FILE}: ${error}`,
+    );
+  }
+}
+
 /**
  * Client for interacting with MinaEscrowPool contract
  */
 export class MinaClient {
   private network: any = null;
   private trackedTradeIds: Set<string> = new Set(); // Simple in-memory tracking
+
+  constructor() {
+    const restored = loadTrackedTradesFromDisk();
+    if (restored.length > 0) {
+      this.trackedTradeIds = new Set(restored);
+      logger.info(
+        `[MinaClient] Restored ${restored.length} tracked tradeIds from disk`,
+      );
+    }
+  }
 
   /**
    * Initialize network connection
@@ -61,6 +120,7 @@ export class MinaClient {
   registerTrade(tradeId: string) {
     this.trackedTradeIds.add(tradeId);
     logger.info(`[MinaClient] Registered trade for tracking: ${tradeId}`);
+    persistTrackedTrades(this.trackedTradeIds);
   }
 
   /**
@@ -69,6 +129,7 @@ export class MinaClient {
   unregisterTrade(tradeId: string) {
     this.trackedTradeIds.delete(tradeId);
     logger.debug(`Unregistered trade: ${tradeId}`);
+    persistTrackedTrades(this.trackedTradeIds);
   }
 
   /**
