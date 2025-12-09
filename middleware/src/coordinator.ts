@@ -126,12 +126,16 @@ export class Coordinator {
    * Main polling logic - queries both chains and locks trades
    */
   private async poll() {
-    logger.debug('--- Poll cycle start ---');
+    logger.debug('--- [Coordinator] Poll cycle start ---');
 
     try {
       // 1. Query active MINA trades from OffchainState
       const minaTrades = await minaClient.getActiveTrades();
-      logger.debug(`Found ${minaTrades.length} active MINA trades`);
+      logger.info(
+        `[Coordinator] Active MINA trades this cycle: ${minaTrades.length} -> [${minaTrades
+          .map((t) => t.tradeId)
+          .join(', ')}]`,
+      );
       const activeTradeIds = new Set(minaTrades.map((t) => t.tradeId));
 
       // 2. For each MINA trade, check ZEC side
@@ -147,20 +151,24 @@ export class Coordinator {
 
       // 4. Log pool status
       const poolBalance = await minaClient.getPoolBalance();
-      logger.debug(`Pool balance: ${Number(poolBalance) / 1e9} MINA`);
+      logger.debug(
+        `[Coordinator] Pool balance: ${Number(poolBalance) / 1e9} MINA`,
+      );
 
     } catch (error) {
-      logger.error(`Poll cycle error: ${error}`);
+      logger.error(`[Coordinator] Poll cycle error: ${error}`);
     }
 
-    logger.debug('--- Poll cycle end ---');
+    logger.debug('--- [Coordinator] Poll cycle end ---');
   }
 
   /**
    * Process a single trade - check both sides and lock if ready
    */
   private async processTrade(minaTrade: MinaTrade) {
-    logger.debug(`Processing trade ${minaTrade.tradeId}`);
+    logger.info(
+      `[Coordinator] Processing trade ${minaTrade.tradeId} (amount=${minaTrade.amount} inTransit=${minaTrade.inTransit})`,
+    );
 
     try {
       // Check port availability FIRST
@@ -169,6 +177,9 @@ export class Coordinator {
       if (!isPortAvailable) {
         const port = portAllocator.get(minaTrade.tradeId) || 0;
         portManager.logCollision(minaTrade.tradeId, port);
+        logger.info(
+          `[Coordinator] Skipping trade ${minaTrade.tradeId} this cycle due to occupied port (mapped port=${port})`,
+        );
         return; // Skip this trade, retry in next poll cycle
       }
 
@@ -176,22 +187,28 @@ export class Coordinator {
       const state = await this.getCombinedState(minaTrade.tradeId);
 
       if (!state.minaState) {
-        logger.debug(`  No MINA state for ${minaTrade.tradeId}`);
+        logger.warn(
+          `[Coordinator] No MINA state for ${minaTrade.tradeId} (getTrade returned null)`,
+        );
         return;
       }
 
       if (!state.zecState) {
-        logger.debug(`  No ZEC state for ${minaTrade.tradeId}`);
+        logger.warn(
+          `[Coordinator] No ZEC state for ${minaTrade.tradeId} (escrowd status unavailable)`,
+        );
         return;
       }
 
       // Check if ready to lock
       if (state.readyToLock) {
-        logger.info(`✓ Trade ${minaTrade.tradeId} ready to lock (both sides funded)`);
+        logger.info(
+          `[Coordinator] ✓ Trade ${minaTrade.tradeId} ready to lock (MINA inTransit=${state.minaState.inTransit}, ZEC verified=${state.zecState.verified}, ZEC in_transit=${state.zecState.in_transit})`,
+        );
         await this.lockBothSides(state, minaTrade);
       } else {
-        logger.debug(
-          `  Trade ${minaTrade.tradeId} not ready (MINA locked=${state.minaState.inTransit}, ZEC verified=${state.zecState.verified}, ZEC locked=${state.zecState.in_transit})`
+        logger.info(
+          `[Coordinator] Trade ${minaTrade.tradeId} not ready (MINA inTransit=${state.minaState.inTransit}, ZEC verified=${state.zecState.verified}, ZEC in_transit=${state.zecState.in_transit})`,
         );
       }
 
@@ -217,6 +234,16 @@ export class Coordinator {
       !minaState.inTransit &&      // MINA not locked
       zecState.verified &&          // ZEC deposit verified
       !zecState.in_transit;         // ZEC not locked
+
+    logger.info(
+      `[Coordinator] Combined state for ${tradeId}: ` +
+        `minaState=${minaState ? 'present' : 'null'} ` +
+        `zecState=${zecState ? 'present' : 'null'} ` +
+        `mina.inTransit=${minaState?.inTransit ?? 'n/a'} ` +
+        `zec.verified=${zecState?.verified ?? 'n/a'} ` +
+        `zec.in_transit=${zecState?.in_transit ?? 'n/a'} ` +
+        `=> readyToLock=${readyToLock}`,
+    );
 
     return {
       tradeId,

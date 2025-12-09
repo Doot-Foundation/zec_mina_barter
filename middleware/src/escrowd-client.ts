@@ -12,8 +12,11 @@ export class EscrowdClient {
    */
   async getStatus(tradeId: string): Promise<EscrowdStatusResponse | null> {
     try {
-      const url = getEscrowdUrl(tradeId, '/status');
-      logger.debug(`Fetching escrowd status: ${url}`);
+      const allocatedPort = portAllocator.get(tradeId);
+      const url = allocatedPort
+        ? `${config.escrowd.baseUrl}:${allocatedPort}/status`
+        : getEscrowdUrl(tradeId, '/status');
+      logger.debug(`[EscrowdClient] Fetching status for ${tradeId}: ${url}`);
 
       const response = await fetch(url, {
         method: 'GET',
@@ -31,13 +34,18 @@ export class EscrowdClient {
       }
 
       const data = await response.json() as EscrowdStatusResponse;
+      logger.debug(
+        `[EscrowdClient] Status for ${tradeId}: verified=${data.verified} in_transit=${data.in_transit} rawStatus=${data.status}`,
+      );
       if (data.origin && !data.origin_address) {
         data.origin_address = data.origin.origin_address;
         data.origin_type = data.origin.origin_type;
       }
       return data;
     } catch (error) {
-      logger.debug(`Failed to fetch escrowd status for ${tradeId}: ${error}`);
+      logger.debug(
+        `[EscrowdClient] Failed to fetch status for ${tradeId}: ${error}`,
+      );
       return null;
     }
   }
@@ -57,8 +65,13 @@ export class EscrowdClient {
     }
   ): Promise<boolean> {
     try {
-      const url = getEscrowdUrl(tradeId, '/set-in-transit');
-      logger.info(`Locking escrowd for trade ${tradeId} with MINA tx ${minaTxHash}`);
+      const allocatedPort = portAllocator.get(tradeId);
+      const url = allocatedPort
+        ? `${config.escrowd.baseUrl}:${allocatedPort}/set-in-transit`
+        : getEscrowdUrl(tradeId, '/set-in-transit');
+      logger.info(
+        `Locking escrowd for trade ${tradeId} on ${url} with MINA tx ${minaTxHash}`
+      );
 
       const response = await fetch(url, {
         method: 'POST',
@@ -94,8 +107,11 @@ export class EscrowdClient {
    */
   async sendToTarget(tradeId: string, targetAddress: string): Promise<boolean> {
     try {
-      const url = getEscrowdUrl(tradeId, '/send-target');
-      logger.info(`Sending ZEC to ${targetAddress} for trade ${tradeId}`);
+      const allocatedPort = portAllocator.get(tradeId);
+      const url = allocatedPort
+        ? `${config.escrowd.baseUrl}:${allocatedPort}/send-target`
+        : getEscrowdUrl(tradeId, '/send-target');
+      logger.info(`Sending ZEC to ${targetAddress} for trade ${tradeId} via ${url}`);
 
       const response = await fetch(url, {
         method: 'POST',
@@ -126,7 +142,10 @@ export class EscrowdClient {
    */
   async getAddresses(tradeId: string): Promise<EscrowdAddressResponse | null> {
     try {
-      const url = getEscrowdUrl(tradeId, '/address');
+      const allocatedPort = portAllocator.get(tradeId);
+      const url = allocatedPort
+        ? `${config.escrowd.baseUrl}:${allocatedPort}/address`
+        : getEscrowdUrl(tradeId, '/address');
 
       const response = await fetch(url, {
         method: 'GET',

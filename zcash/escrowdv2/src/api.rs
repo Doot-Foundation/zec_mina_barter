@@ -173,19 +173,65 @@ async fn funding_shielded(
     State(state): State<SharedState>,
     Json(req): Json<FundingShieldedRequest>,
 ) -> Result<Json<StatusSnapshot>, AppError> {
+    // High-detail logging for debugging shielded funding flows.
+    let line = format!(
+        "[escrowdv2] /funding/shielded request api_key={} memo={} origin_address={} min_zec={} escrow_addr={}",
+        req.api_key,
+        req.memo,
+        req.origin_address,
+        state.config.funding_min_zec,
+        state.wallet.address(),
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
+    tracing::info!(
+        "{} /funding/shielded called api_key={} memo={} origin_address={} min_zec={} escrow_addr={}",
+        crate::logging::tags::INFO,
+        req.api_key,
+        req.memo,
+        req.origin_address,
+        state.config.funding_min_zec,
+        state.wallet.address(),
+    );
+
     state.ensure_api_key(&req.api_key)?;
 
     // Verify memo matches API key
     if req.memo != req.api_key {
         tracing::warn!(
-            "{} shielded funding memo mismatch",
-            crate::logging::tags::WARNING
+            "{} shielded funding memo mismatch api_key={} memo={}",
+            crate::logging::tags::WARNING,
+            req.api_key,
+            req.memo
         );
+        let line = format!(
+            "[escrowdv2] /funding/shielded memo mismatch api_key={} memo={}",
+            req.api_key,
+            req.memo
+        );
+        eprintln!("{}", line);
+        crate::logging::append_trade_log(&line);
         return Err(AppError::Unauthorized);
     }
 
-    // ON-CHAIN VERIFICATION: Check zcashd for received shielded note
+    // ON-CHAIN VERIFICATION: Check for received shielded note with matching memo.
     let escrow_addr = state.wallet.address();
+    tracing::info!(
+        "{} verifying shielded funding on-chain escrow_addr={} min_zec={} memo={}",
+        crate::logging::tags::INFO,
+        escrow_addr,
+        state.config.funding_min_zec,
+        req.memo
+    );
+    let line = format!(
+        "[escrowdv2] verifying shielded funding escrow_addr={} min_zec={} memo={}",
+        escrow_addr,
+        state.config.funding_min_zec,
+        req.memo
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
+
     let has_funds = state
         .wallet
         .verify_shielded_funding(&req.api_key, state.config.funding_min_zec)
@@ -199,6 +245,14 @@ async fn funding_shielded(
             state.config.funding_min_zec,
             req.memo
         );
+        let line = format!(
+            "[escrowdv2] shielded funding NOT FOUND addr={} min_zec={} memo={}",
+            escrow_addr,
+            state.config.funding_min_zec,
+            req.memo
+        );
+        eprintln!("{}", line);
+        crate::logging::append_trade_log(&line);
         return Err(AppError::FundingNotFound);
     }
 

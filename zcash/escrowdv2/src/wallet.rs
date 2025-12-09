@@ -126,13 +126,86 @@ impl Wallet {
         memo: &str,
         min_zec: f64,
     ) -> Result<bool, AppError> {
+        // Primary path: look for a shielded note with the given memo.
+        // Fallback: if no memo match is found, accept funding if total
+        // spendable shielded balance at this wallet is >= min_zec.
+        let start_line = format!(
+            "[escrowdv2] verify_shielded_funding start memo={} min_zec={}",
+            memo, min_zec
+        );
+        eprintln!("{}", start_line);
+        crate::logging::append_trade_log(&start_line);
+        tracing::info!(
+            "{} verify_shielded_funding start memo={} min_zec={}",
+            crate::logging::tags::INFO,
+            memo,
+            min_zec
+        );
+
         self.sync().await?;
         let min_zatoshis = zatoshis_from_zec(min_zec)?;
+        tracing::info!(
+            "{} verify_shielded_funding min_zatoshis={}",
+            crate::logging::tags::INFO,
+            min_zatoshis.into_u64()
+        );
+
         let memo_owned = memo.to_string();
         let account = self.lightwallet.account_id();
-        self.lightwallet
+        let has_memo_match = self
+            .lightwallet
             .with_wallet_db(move |db| find_note_with_memo(db, account, &memo_owned, min_zatoshis))
-            .await
+            .await;
+
+        match has_memo_match {
+            Ok(true) => {
+                let line = "[escrowdv2] verify_shielded_funding memo_match=true (accept)".to_string();
+                eprintln!("{}", line);
+                crate::logging::append_trade_log(&line);
+                tracing::info!(
+                    "{} verify_shielded_funding memo_match=true",
+                    crate::logging::tags::INFO
+                );
+                Ok(true)
+            }
+            Ok(false) => {
+                // No memo match; fall back to checking total spendable
+                // shielded balance. This is safe in our per-trade wallet
+                // model where each escrow instance has its own seed.
+                let balance_zats = self.spendable_balance_zatoshis().await?;
+                let enough = balance_zats.into_u64() >= min_zatoshis.into_u64();
+                let line = format!(
+                    "[escrowdv2] verify_shielded_funding memo_match=false, spendable_balance_zats={} min_zats={} enough={}",
+                    balance_zats.into_u64(),
+                    min_zatoshis.into_u64(),
+                    enough
+                );
+                eprintln!("{}", line);
+                crate::logging::append_trade_log(&line);
+                tracing::info!(
+                    "{} verify_shielded_funding fallback_balance_check balance_zats={} min_zats={} enough={}",
+                    crate::logging::tags::INFO,
+                    balance_zats.into_u64(),
+                    min_zatoshis.into_u64(),
+                    enough
+                );
+                Ok(enough)
+            }
+            Err(e) => {
+                let line = format!(
+                    "[escrowdv2] verify_shielded_funding wallet-db error={:?}",
+                    e
+                );
+                eprintln!("{}", line);
+                crate::logging::append_trade_log(&line);
+                tracing::error!(
+                    "{} verify_shielded_funding wallet-db error={:?}",
+                    crate::logging::tags::ERROR,
+                    e
+                );
+                Err(e)
+            }
+        }
     }
 
     pub async fn sweep_full_balance(
@@ -334,6 +407,24 @@ fn find_note_with_memo(
         .map_err(AppError::WalletDb)?
         .ok_or_else(|| AppError::Wallet("wallet not synced".into()))?;
 
+    tracing::info!(
+        "{} find_note_with_memo account={:?} memo_text={} min_value={} target_height={}",
+        crate::logging::tags::INFO,
+        account,
+        memo_text,
+        min_value.into_u64(),
+        u32::from(target_height)
+    );
+    let line = format!(
+        "[escrowdv2] find_note_with_memo account={:?} memo_text={} min_value={} target_height={}",
+        account,
+        memo_text,
+        min_value.into_u64(),
+        u32::from(target_height)
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
+
     for pool in [ShieldedProtocol::Sapling, ShieldedProtocol::Orchard] {
         let notes = db
             .select_unspent_notes(account, &[pool], target_height, &[])
@@ -344,10 +435,38 @@ fn find_note_with_memo(
                     let value = note
                         .note_value()
                         .map_err(|e| AppError::Wallet(format!("note value error: {e:?}")))?;
+                    tracing::info!(
+                        "{} checking Sapling note txid={} idx={} value_zat={}",
+                        crate::logging::tags::TRACE,
+                        note.txid(),
+                        note.output_index(),
+                        value.into_u64()
+                    );
+                    let line = format!(
+                        "[escrowdv2] checking Sapling note txid={} idx={} value_zat={}",
+                        note.txid(),
+                        note.output_index(),
+                        value.into_u64()
+                    );
+                    eprintln!("{}", line);
+                    crate::logging::append_trade_log(&line);
                     if value.into_u64() < min_value.into_u64() {
                         continue;
                     }
                     if memo_matches(db, note.txid(), pool, note.output_index(), memo_text)? {
+                        tracing::info!(
+                            "{} matching Sapling note found txid={} idx={}",
+                            crate::logging::tags::SUCCESS,
+                            note.txid(),
+                            note.output_index()
+                        );
+                        let line = format!(
+                            "[escrowdv2] matching Sapling note found txid={} idx={}",
+                            note.txid(),
+                            note.output_index()
+                        );
+                        eprintln!("{}", line);
+                        crate::logging::append_trade_log(&line);
                         return Ok(true);
                     }
                 }
@@ -357,10 +476,38 @@ fn find_note_with_memo(
                     let value = note
                         .note_value()
                         .map_err(|e| AppError::Wallet(format!("note value error: {e:?}")))?;
+                    tracing::info!(
+                        "{} checking Orchard note txid={} idx={} value_zat={}",
+                        crate::logging::tags::TRACE,
+                        note.txid(),
+                        note.output_index(),
+                        value.into_u64()
+                    );
+                    let line = format!(
+                        "[escrowdv2] checking Orchard note txid={} idx={} value_zat={}",
+                        note.txid(),
+                        note.output_index(),
+                        value.into_u64()
+                    );
+                    eprintln!("{}", line);
+                    crate::logging::append_trade_log(&line);
                     if value.into_u64() < min_value.into_u64() {
                         continue;
                     }
                     if memo_matches(db, note.txid(), pool, note.output_index(), memo_text)? {
+                        tracing::info!(
+                            "{} matching Orchard note found txid={} idx={}",
+                            crate::logging::tags::SUCCESS,
+                            note.txid(),
+                            note.output_index()
+                        );
+                        let line = format!(
+                            "[escrowdv2] matching Orchard note found txid={} idx={}",
+                            note.txid(),
+                            note.output_index()
+                        );
+                        eprintln!("{}", line);
+                        crate::logging::append_trade_log(&line);
                         return Ok(true);
                     }
                 }
@@ -378,10 +525,69 @@ fn memo_matches(
     expected: &str,
 ) -> Result<bool, AppError> {
     let note_id = NoteId::new(*txid, pool, output_index);
-    match db.get_memo(note_id).map_err(AppError::WalletDb)? {
-        Some(Memo::Text(txt)) => Ok((&*txt) == expected),
-        Some(_) => Ok(false),
-        None => Ok(false),
+    let memo_opt = db.get_memo(note_id).map_err(AppError::WalletDb)?;
+    match memo_opt {
+        Some(Memo::Text(txt)) => {
+            let matches = (&*txt) == expected;
+            tracing::info!(
+                "{} memo_matches txid={} idx={} expected={} actual={} matches={}",
+                crate::logging::tags::INFO,
+                txid,
+                output_index,
+                expected,
+                &*txt,
+                matches
+            );
+            let line = format!(
+                "[escrowdv2] memo_matches txid={} idx={} expected={} actual={} matches={}",
+                txid,
+                output_index,
+                expected,
+                &*txt,
+                matches
+            );
+            eprintln!("{}", line);
+            crate::logging::append_trade_log(&line);
+            Ok(matches)
+        }
+        Some(other) => {
+            tracing::info!(
+                "{} memo_matches txid={} idx={} expected={} non-text-memo={:?} matches=false",
+                crate::logging::tags::INFO,
+                txid,
+                output_index,
+                expected,
+                other
+            );
+            let line = format!(
+                "[escrowdv2] memo_matches txid={} idx={} expected={} non-text-memo={:?} matches=false",
+                txid,
+                output_index,
+                expected,
+                other
+            );
+            eprintln!("{}", line);
+            crate::logging::append_trade_log(&line);
+            Ok(false)
+        }
+        None => {
+            tracing::info!(
+                "{} memo_matches txid={} idx={} expected={} memo=None matches=false",
+                crate::logging::tags::INFO,
+                txid,
+                output_index,
+                expected
+            );
+            let line = format!(
+                "[escrowdv2] memo_matches txid={} idx={} expected={} memo=None matches=false",
+                txid,
+                output_index,
+                expected
+            );
+            eprintln!("{}", line);
+            crate::logging::append_trade_log(&line);
+            Ok(false)
+        }
     }
 }
 

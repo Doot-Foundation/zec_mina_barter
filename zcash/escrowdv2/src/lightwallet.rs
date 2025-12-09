@@ -125,12 +125,31 @@ impl Lightwallet {
     }
 
     pub async fn sync(&self) -> Result<(), AppError> {
+        tracing::info!(
+            "{} lightwallet.sync start",
+            crate::logging::tags::INFO
+        );
         let mut grpc = self.inner.grpc.lock().await;
         let mut wallet_db = self.inner.wallet_db.lock().await;
         let cache = self.inner.cache.clone();
-        sync::run(&mut grpc, &self.inner.params, &cache, &mut *wallet_db, 100)
-            .await
-            .map_err(|e| AppError::Wallet(format!("lightwallet sync failed: {e:?}")))
+        let result =
+            sync::run(&mut grpc, &self.inner.params, &cache, &mut *wallet_db, 100).await;
+        match &result {
+            Ok(_) => {
+                tracing::info!(
+                    "{} lightwallet.sync complete (ok)",
+                    crate::logging::tags::INFO
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    "{} lightwallet.sync failed error={:?}",
+                    crate::logging::tags::ERROR,
+                    e
+                );
+            }
+        }
+        result.map_err(|e| AppError::Wallet(format!("lightwallet sync failed: {e:?}")))
     }
 
     pub async fn with_wallet_db<F, R>(&self, f: F) -> Result<R, AppError>

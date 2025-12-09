@@ -60,7 +60,7 @@ export class MinaClient {
    */
   registerTrade(tradeId: string) {
     this.trackedTradeIds.add(tradeId);
-    logger.debug(`Registered trade: ${tradeId}`);
+    logger.info(`[MinaClient] Registered trade for tracking: ${tradeId}`);
   }
 
   /**
@@ -78,17 +78,30 @@ export class MinaClient {
   async getActiveTrades(): Promise<MinaTrade[]> {
     const trades: MinaTrade[] = [];
 
+    logger.debug(
+      `[MinaClient] getActiveTrades() over ${this.trackedTradeIds.size} tracked tradeIds`,
+    );
+
     for (const tradeId of this.trackedTradeIds) {
+      logger.debug(`[MinaClient]   -> querying tradeId=${tradeId}`);
       const trade = await this.getTrade(tradeId);
       if (trade) {
+        logger.debug(
+          `[MinaClient]   <- active trade ${tradeId}: amount=${trade.amount} inTransit=${trade.inTransit}`,
+        );
         trades.push(trade);
       } else {
         // Trade completed/not found, unregister it
         this.unregisterTrade(tradeId);
+        logger.debug(
+          `[MinaClient]   <- trade ${tradeId} not active (completed or missing), unregistered from tracking`,
+        );
       }
     }
 
-    logger.debug(`Found ${trades.length} active tracked trades`);
+    logger.info(
+      `[MinaClient] getActiveTrades() result: ${trades.length} active trades`,
+    );
     return trades;
   }
 
@@ -102,6 +115,8 @@ export class MinaClient {
     try {
       // Get zkApp instance
       const zkApp = await this.getZkApp();
+      // Normalize tradeId into Field for contract lookup, but
+      // keep the original string as the logical trade identifier
       const tradeIdField = this.toTradeIdField(tradeId);
 
       // Fetch latest account state
@@ -112,7 +127,9 @@ export class MinaClient {
 
       // Check if trade exists
       if (!trade.isSome.toBoolean()) {
-        logger.debug(`Trade not found: ${tradeIdField.toString()}`);
+        logger.debug(
+          `[MinaClient] getTrade(${tradeId}) -> not found in OffchainState (field=${tradeIdField.toString()})`,
+        );
         return null;
       }
 
@@ -120,13 +137,17 @@ export class MinaClient {
 
       // Check if completed
       if (tradeData.completed.toBoolean()) {
-        logger.debug(`Trade completed: ${tradeIdField.toString()}`);
+        logger.debug(
+          `[MinaClient] getTrade(${tradeId}) -> completed=true (field=${tradeIdField.toString()})`,
+        );
         return null;
       }
 
-      // Convert to MinaTrade format
-      return {
-        tradeId: tradeIdField.toString(),
+      // Convert to MinaTrade format. tradeId is the original UUID string
+      // used throughout the middleware (for port allocation, escrowd TRADE_ID, etc),
+      // while tradeIdField is the Field representation used on-chain.
+      const result: MinaTrade = {
+        tradeId,
         tradeIdField: tradeIdField.toString(),
         depositor: tradeData.depositor.toBase58(),
         amount: tradeData.amount.toString(),
@@ -136,8 +157,13 @@ export class MinaClient {
         depositBlockHeight: tradeData.depositBlockHeight.toString(),
         expiryBlockHeight: tradeData.expiryBlockHeight.toString(),
       };
+
+      logger.debug(
+        `[MinaClient] getTrade(${tradeId}) -> OK amount=${result.amount} inTransit=${result.inTransit} depositor=${result.depositor}`,
+      );
+      return result;
     } catch (error) {
-      logger.error(`Failed to query trade: ${error}`);
+      logger.error(`[MinaClient] Failed to query trade ${tradeId}: ${error}`);
       return null;
     }
   }

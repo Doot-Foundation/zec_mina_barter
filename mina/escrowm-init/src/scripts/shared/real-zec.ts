@@ -12,10 +12,16 @@ import { logInfo, logSuccess, logWarning, logSection } from './test-utils.js';
 
 // Configuration
 const MIDDLEWARE_BASE_URL = process.env.MIDDLEWARE_URL || 'http://127.0.0.1:3000';
-const MIDDLEWARE_TIMEOUT = 30000; // 30 seconds for spawn operations
+// Spawn can take a long time on first run because escrowdv2 is compiled
+// from source. Align client timeout with middleware's 9 minute readiness
+// window to avoid aborting while the instance is still initializing.
+const MIDDLEWARE_TIMEOUT = 540000; // 9 minutes for spawn operations
 const STATUS_TIMEOUT = 5000; // 5 seconds for status checks
 const POLLING_INTERVAL = 3000; // 3 seconds between status polls
 const MAX_POLLING_ATTEMPTS = 60; // 3 minutes total (60 * 3s)
+// Minimum ZEC funding amount expected by escrowdv2. Keep this in sync with
+// the FUNDING_MIN_ZEC env used when spawning escrowdv2 via middleware.
+const FUNDING_MIN_ZEC = parseFloat(process.env.FUNDING_MIN_ZEC || '0.001');
 
 // Interfaces
 export interface EscrowdSpawnResult {
@@ -69,8 +75,19 @@ export async function spawnEscrowdInstance(
   apiKey: string
 ): Promise<EscrowdSpawnResult> {
   try {
+    // Long-running spawn with periodic status logging so the user
+    // sees progress while middleware is compiling/starting escrowdv2.
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), MIDDLEWARE_TIMEOUT);
+
+    const start = Date.now();
+    const progressInterval = setInterval(() => {
+      const elapsedSec = Math.floor((Date.now() - start) / 1000);
+      const totalSec = Math.floor(MIDDLEWARE_TIMEOUT / 1000);
+      logInfo(
+        `Waiting for middleware to spawn escrowdv2 (elapsed ${elapsedSec}s / ${totalSec}s)...`
+      );
+    }, 30000); // every 30 seconds
 
     logInfo(`Calling middleware: POST /api/spawn-escrowd`);
     console.log(`  Trade ID: ${tradeId}`);
@@ -86,6 +103,7 @@ export async function spawnEscrowdInstance(
     });
 
     clearTimeout(timeout);
+    clearInterval(progressInterval);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -111,6 +129,8 @@ export async function spawnEscrowdInstance(
       address: addressData.ua,
     };
   } catch (err: any) {
+    // Ensure any timers are cleared on error paths as well
+    // (defensive in case of early throws before intervals are created).
     console.error(`❌ Failed to spawn escrowdv2: ${err.message}`);
     return {
       success: false,
@@ -235,8 +255,15 @@ export async function promptUserToFundZec(
   }
 
   console.log('  Copy-paste this command in another terminal:\n');
+  // NOTE: We use AllowLinkingAccountAddresses here because on testnet we
+  // typically use faucet (coinbase-origin) funds, which require a weaker
+  // privacy policy to be selectable for spending.
+  // Previously the example used "AllowRevealedAmounts":
+  // ..."AllowRevealedAmounts"]}'
   console.log(`curl -u zcashrpc:your_secure_password_here_change_me \\`);
-  console.log(`  --data-binary '{"jsonrpc":"1.0","id":"fund","method":"z_sendmany","params":["${sourceAddress}",[{"address":"${escrowAddress}","amount":${expectedZec},"memo":"${memoHex}"}],1,null,"AllowRevealedAmounts"]}' \\`);
+  console.log(
+    `  --data-binary '{"jsonrpc":"1.0","id":"fund","method":"z_sendmany","params":["${sourceAddress}",[{"address":"${escrowAddress}","amount":${expectedZec},"memo":"${memoHex}"}],1,null,"AllowLinkingAccountAddresses"]}' \\`
+  );
   console.log(`  -H 'content-type:text/plain;' \\`);
   console.log(`  http://127.0.0.1:18232/\n`);
 
@@ -309,7 +336,10 @@ export async function calculateZecFromOracle(minaAmount: number): Promise<number
 
     if (response.ok) {
       const data = await response.json() as { rate: number };
-      return minaAmount * data.rate;
+      const raw = minaAmount * data.rate;
+      // Clamp so we never suggest less than FUNDING_MIN_ZEC, otherwise
+      // escrowdv2 will reject funding as below its configured minimum.
+      return Math.max(raw, FUNDING_MIN_ZEC);
     }
 
     // Fallback: Use Doot Foundation API directly
@@ -335,11 +365,13 @@ export async function calculateZecFromOracle(minaAmount: number): Promise<number
     const zecPrice = parseFloat(zecData.price_data.price) / 1e10;
 
     const rate = minaPrice / zecPrice;
-    return minaAmount * rate;
+    const raw = minaAmount * rate;
+    return Math.max(raw, FUNDING_MIN_ZEC);
   } catch (err: any) {
     console.error(`⚠️  Failed to fetch oracle price: ${err.message}`);
     console.error('   Using fallback rate: 0.00002 ZEC per MINA');
-    return minaAmount * 0.00002; // Fallback rate
+    const raw = minaAmount * 0.00002; // Fallback rate
+    return Math.max(raw, FUNDING_MIN_ZEC);
   }
 }
 

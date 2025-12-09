@@ -34,7 +34,8 @@ async function waitForEscrowdReady(port: number, timeoutMs: number = 540000): Pr
       if (response.ok) {
         const data = await response.json();
         logger.info(`[waitForEscrowdReady] ✓ escrowdv2 ready after ${elapsed}s (${attempt} attempts)`);
-        logger.info(`[waitForEscrowdReady] Address: ${data.address}`);
+        // escrowdv2 /address returns { ua: string } (unified address)
+        logger.info(`[waitForEscrowdReady] Address: ${data.ua}`);
         return;
       }
     } catch (error) {
