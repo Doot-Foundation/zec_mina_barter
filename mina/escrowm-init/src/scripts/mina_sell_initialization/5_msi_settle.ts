@@ -81,98 +81,98 @@ async function main() {
   // ============================================================================
   // ============================================================================
 
-  // // STEP 6: Generate Settlement Proof
-  // // ============================================================================
+  // STEP 6: Generate Settlement Proof
+  // ============================================================================
 
-  // logSection('⚡ Generating Settlement Proof');
+  logSection('⚡ Generating Settlement Proof');
 
-  // console.log('  ⚠️  IMPORTANT: Settlement proof generation takes 5-6 minutes');
-  // console.log('  This is expected behavior for offchain state settlement');
-  // console.log(
-  //   '  The proof cryptographically commits all pending offchain state changes'
-  // );
-  // console.log('  Please be patient...\n');
+  console.log('  ⚠️  IMPORTANT: Settlement proof generation takes 5-6 minutes');
+  console.log('  This is expected behavior for offchain state settlement');
+  console.log(
+    '  The proof cryptographically commits all pending offchain state changes'
+  );
+  console.log('  Please be patient...\n');
 
-  // const zkApp = getContractInstance();
+  const zkApp = getContractInstance();
 
-  // logInfo('Starting proof generation...');
-  // console.log(`  Started at: ${new Date().toLocaleTimeString()}`);
+  logInfo('Starting proof generation...');
+  console.log(`  Started at: ${new Date().toLocaleTimeString()}`);
 
-  // const proofStartTime = Date.now();
+  const proofStartTime = Date.now();
 
-  // let proof;
-  // try {
-  //   proof = await zkApp.offchainState.createSettlementProof();
-  //   const proofDuration = ((Date.now() - proofStartTime) / 1000 / 60).toFixed(
-  //     2
-  //   );
+  let proof;
+  try {
+    proof = await zkApp.offchainState.createSettlementProof();
+    const proofDuration = ((Date.now() - proofStartTime) / 1000 / 60).toFixed(
+      2
+    );
 
-  //   logSuccess(`Settlement proof generated in ${proofDuration} minutes`);
-  //   console.log(`  Completed at: ${new Date().toLocaleTimeString()}`);
-  // } catch (error) {
-  //   console.error('\n❌ Failed to generate settlement proof');
-  //   console.error('  Error:', error);
-  //   console.error('\nPossible causes:');
-  //   console.error('  - No pending offchain state actions to settle');
-  //   console.error('  - Insufficient memory or resources');
-  //   console.error('  - Network connectivity issues');
-  //   throw error;
-  // }
+    logSuccess(`Settlement proof generated in ${proofDuration} minutes`);
+    console.log(`  Completed at: ${new Date().toLocaleTimeString()}`);
+  } catch (error) {
+    console.error('\n❌ Failed to generate settlement proof');
+    console.error('  Error:', error);
+    console.error('\nPossible causes:');
+    console.error('  - No pending offchain state actions to settle');
+    console.error('  - Insufficient memory or resources');
+    console.error('  - Network connectivity issues');
+    throw error;
+  }
 
-  // // ============================================================================
-  // // STEP 7: Build Settlement Transaction
-  // // ============================================================================
+  // ============================================================================
+  // STEP 7: Build Settlement Transaction
+  // ============================================================================
 
-  // logSection('📤 Submitting Settlement Transaction');
+  logSection('📤 Submitting Settlement Transaction');
 
-  // console.log(
-  //   `  Submitter: Operator (${accounts.operator.address.toBase58()})`
-  // );
-  // console.log(`  Contract: ${CONTRACT_ADDRESS}`);
-  // console.log(`  Fee: ${FEE / 1e9} MINA`);
+  console.log(
+    `  Submitter: Operator (${accounts.operator.address.toBase58()})`
+  );
+  console.log(`  Contract: ${CONTRACT_ADDRESS}`);
+  console.log(`  Fee: ${FEE / 1e9} MINA`);
 
-  // // Fetch latest account state to ensure fresh nonce
-  // logInfo('Fetching latest Operator account state...');
-  // await fetchAccount({ publicKey: accounts.operator.address });
+  // Fetch latest account state to ensure fresh nonce
+  logInfo('Fetching latest Operator account state...');
+  await fetchAccount({ publicKey: accounts.operator.address });
 
-  // logInfo('Building settlement transaction...');
+  logInfo('Building settlement transaction...');
 
-  // const settleTxn = await Mina.transaction(
-  //   { sender: accounts.operator.address, fee: FEE },
-  //   async () => {
-  //     await zkApp.settle(proof);
-  //   }
-  // );
+  const settleTxn = await Mina.transaction(
+    { sender: accounts.operator.address, fee: FEE },
+    async () => {
+      await zkApp.settle(proof);
+    }
+  );
 
-  // logSuccess('Transaction built');
+  logSuccess('Transaction built');
 
-  // // ============================================================================
-  // // STEP 8: Prove Transaction
-  // // ============================================================================
+  // ============================================================================
+  // STEP 8: Prove Transaction
+  // ============================================================================
 
-  // logInfo('Generating transaction proof...');
-  // await settleTxn.prove();
-  // logSuccess('Transaction proof generated');
+  logInfo('Generating transaction proof...');
+  await settleTxn.prove();
+  logSuccess('Transaction proof generated');
 
-  // // ============================================================================
-  // // STEP 9: Sign and Send Transaction
-  // // ============================================================================
+  // ============================================================================
+  // STEP 9: Sign and Send Transaction
+  // ============================================================================
 
-  // logInfo('Signing transaction with Operator key...');
-  // const sentTx = await settleTxn.sign([accounts.operator.key]).send();
+  logInfo('Signing transaction with Operator key...');
+  const sentTx = await settleTxn.sign([accounts.operator.key]).send();
 
-  // logSection('✅ Transaction Sent');
-  // console.log(`  Transaction Hash: ${sentTx.hash}`);
-  // console.log(`  Explorer: https://zekoscan.io/testnet/tx/${sentTx.hash}`);
+  logSection('✅ Transaction Sent');
+  console.log(`  Transaction Hash: ${sentTx.hash}`);
+  console.log(`  Explorer: https://zekoscan.io/testnet/tx/${sentTx.hash}`);
 
-  // // Update state with settle transaction hash
-  // updateTradeState('msi', { settleTxHash: sentTx.hash });
+  // Update state with settle transaction hash
+  updateTradeState('msi', { settleTxHash: sentTx.hash });
 
-  // // ============================================================================
-  // // STEP 10: Wait for Confirmation
-  // // ============================================================================
+  // ============================================================================
+  // STEP 10: Wait for Confirmation
+  // ============================================================================
 
-  // await waitForConfirmation();
+  await waitForConfirmation();
 
   // ============================================================================
   // STEP 11: Post-Settlement Balances

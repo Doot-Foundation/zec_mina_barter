@@ -82,19 +82,64 @@ export class MinaClient {
       `[MinaClient] getActiveTrades() over ${this.trackedTradeIds.size} tracked tradeIds`,
     );
 
+    // Fast-path: nothing tracked yet
+    if (this.trackedTradeIds.size === 0) {
+      logger.info(
+        "[MinaClient] getActiveTrades() result: 0 active trades (no tracked tradeIds)",
+      );
+      return trades;
+    }
+
+    // Use a single zkApp + account fetch for all tracked trades
+    const zkApp = await this.getZkApp();
+    await fetchAccountWithRetry({ publicKey: config.mina.poolAddress });
+
     for (const tradeId of this.trackedTradeIds) {
-      logger.debug(`[MinaClient]   -> querying tradeId=${tradeId}`);
-      const trade = await this.getTrade(tradeId);
-      if (trade) {
+      logger.debug(`[MinaClient]   -> querying tradeId=${tradeId} via OffchainState.get()`);
+
+      try {
+        const tradeIdField = this.toTradeIdField(tradeId);
+        const opt = await zkApp.offchainState.fields.trades.get(tradeIdField);
+
+        // Case 1: No entry yet on-chain – keep tracking, it's likely not settled yet.
+        if (!opt.isSome.toBoolean()) {
+          logger.debug(
+            `[MinaClient]   <- trade ${tradeId} not yet present in OffchainState (field=${tradeIdField.toString()}); keeping tracked`,
+          );
+          continue;
+        }
+
+        const tradeData = opt.value;
+
+        // Case 2: Explicitly completed (TradeData.empty()) – unregister permanently.
+        if (tradeData.completed.toBoolean()) {
+          logger.debug(
+            `[MinaClient]   <- trade ${tradeId} marked completed in OffchainState; unregistering from tracking`,
+          );
+          this.unregisterTrade(tradeId);
+          continue;
+        }
+
+        // Case 3: Active trade – convert to MinaTrade DTO.
+        const result: MinaTrade = {
+          tradeId,
+          tradeIdField: tradeIdField.toString(),
+          depositor: tradeData.depositor.toBase58(),
+          amount: tradeData.amount.toString(),
+          inTransit: tradeData.inTransit.toBoolean(),
+          claimant: tradeData.claimant.toBase58(),
+          refundAddress: tradeData.refundAddress.toBase58(),
+          depositBlockHeight: tradeData.depositBlockHeight.toString(),
+          expiryBlockHeight: tradeData.expiryBlockHeight.toString(),
+        };
+
         logger.debug(
-          `[MinaClient]   <- active trade ${tradeId}: amount=${trade.amount} inTransit=${trade.inTransit}`,
+          `[MinaClient]   <- active trade ${tradeId}: amount=${result.amount} inTransit=${result.inTransit}`,
         );
-        trades.push(trade);
-      } else {
-        // Trade completed/not found, unregister it
-        this.unregisterTrade(tradeId);
-        logger.debug(
-          `[MinaClient]   <- trade ${tradeId} not active (completed or missing), unregistered from tracking`,
+        trades.push(result);
+      } catch (error) {
+        logger.error(
+          `[MinaClient]   !! error while querying trade ${tradeId} in getActiveTrades(): ${error}`,
         );
       }
     }
