@@ -269,7 +269,19 @@ export class MinaClient {
       );
       return result;
     } catch (error) {
-      logger.error(`[MinaClient] Failed to query trade ${tradeId}: ${error}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes("root mismatch")) {
+        // This typically happens while a settlement proof has updated the
+        // offchainState merkleMap but the on-chain commitments haven't been
+        // updated yet. Treat it as a transient condition and retry next poll.
+        logger.warn(
+          `[MinaClient] Transient OffchainState root mismatch while querying trade ${tradeId}; likely settlement in progress. Skipping this poll.`,
+        );
+      } else {
+        logger.error(
+          `[MinaClient] Failed to query trade ${tradeId}: ${msg}`,
+        );
+      }
       return null;
     }
   }
@@ -319,9 +331,16 @@ export class MinaClient {
       const txHash = signedTx.hash;
       logger.info(`✓ MINA trade locked: ${txHash}`);
 
-      // Wait for inclusion (optional)
-      await signedTx.wait();
-      logger.debug(`Transaction confirmed: ${txHash}`);
+      // Wait for inclusion (optional, GraphQL may not support bestChain)
+      try {
+        await signedTx.wait();
+        logger.debug(`Transaction confirmed: ${txHash}`);
+      } catch (waitError) {
+        // Non-fatal on Zeko: we already have a hash and the tx was accepted.
+        logger.warn(
+          `[MinaClient] wait() for lockTrade(${tradeId}) failed (non-fatal): ${waitError}`,
+        );
+      }
 
       return txHash;
     } catch (error) {
@@ -371,8 +390,14 @@ export class MinaClient {
       const txHash = signedTx.hash;
       logger.warn(`✓ MINA trade emergency unlocked: ${txHash}`);
 
-      // Wait for inclusion
-      await signedTx.wait();
+      // Wait for inclusion (optional)
+      try {
+        await signedTx.wait();
+      } catch (waitError) {
+        logger.warn(
+          `[MinaClient] wait() for emergencyUnlock(${tradeId}) failed (non-fatal): ${waitError}`,
+        );
+      }
 
       return txHash;
     } catch (error) {
