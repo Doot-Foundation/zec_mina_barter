@@ -245,8 +245,11 @@ export async function promptUserToFundZec(
 
   // Account addresses (must match your zcashd wallet)
   const accountAddresses = {
-    0: 'utest15dsyyx0mnx7tgnewau68lxsylcyttmxvd2sddpjjctscjmdqld5dwj76mcggymhg32hk8jxr398hmwxj2cf6skpnxyhy8v2yw8j97h04pzjassln94mgeuf2h9v9mp0gmhd5cxtqcz84dm856tp5pkp6q7tld9pe3y3dcrdmw5sqa7lq8hwp8der5209el4rcp7vjpjrgl7fxrucwk2',
-    1: 'utest1ttt7ggr22jutu4dlvw8649j6a5c70ljj3ec5tymtaqmrl69rx7vruup73wy5ujydfvzst0qq2f0kup88wrhtp7uamrzw708hxpgumy7l5hzywr9z9freszdnqpvjp9cfrgjphs2me5cpc39j7ts4ywyxk2659er8xju34yxmkk08wk8q2hqvftjx7tx6hjd7nxkhrf30ja2c2v4xppk',
+    // These must match the current unified addresses returned by:
+    //   z_getaddressforaccount 0
+    //   z_getaddressforaccount 1
+    0: 'utest14ew4ta3d7ts6acfxj0z3n5l2cmsctawusjj8wtry89wp0wlpa9j89gx7e3mts35zwunjnh3vlqg26gwnt54v29qrgm8kl2jrk6xd8zmhrpvt2trdeyywalh2lgw4r360xztnt4673fxvdwsrtpx2ynadvksdaarc4m00yvxnmmdgd659geewczwglww9n335x534ejcfrp0nsxuspq5',
+    1: 'utest1k0ahrp5mhv3ywczxud6hmj9nevl54le9sr5drv9mmuuqg8xderpd92lu0dr6v8rwruqtpqkv8a46nknn8avvsj0eu67cayt3lsu037qdmlk9070z6w9904qhh5xznfg8asaszq3s0eve4wjwhgn0m8czqskngqs2lnfqfm2u3zg864ujqjuq6x3qeztr9cpn2f82q34lsavqwh6tf9v',
   };
 
   const sourceAddress = accountAddresses[fromAccount as keyof typeof accountAddresses];

@@ -1,3 +1,0 @@
-curl -X POST http://127.0.0.1:9000/funding/shielded \
-  -H 'Content-Type: application/json' \
-  -d '{"api_key":"this_is_escrowd_operator_token","memo":"this_is_escrowd_operator_token","origin_address":"utest15dsyyx0mnx7tgnewau68lxsylcyttmxvd2sddpjjctscjmdqld5dwj76mcggymhg32hk8jxr398hmwxj2cf6skpnxyhy8v2yw8j97h04pzjassln94mgeuf2h9v9mp0gmhd5cxtqcz84dm856tp5pkp6q7tld9pe3y3dcrdmw5sqa7lq8hwp8der5209el4rcp7vjpjrgl7fxrucwk2"}'

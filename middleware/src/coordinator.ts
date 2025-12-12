@@ -23,6 +23,10 @@ export class Coordinator {
   private pollInterval: NodeJS.Timeout | null = null;
   private lockedTrades = new Map<string, MinaTrade>();
   private lockRetryState = new Map<string, { attempts: number; nextAttempt: number }>();
+  // Cache of MINA lock transaction hashes per trade so we never
+  // submit multiple lockTrade() txs for the same trade while we
+  // are still trying to lock the ZEC side.
+  private minaLockTxHashes = new Map<string, string>();
 
   /**
    * Initialize coordinator
@@ -84,6 +88,7 @@ export class Coordinator {
     // Clear in-memory caches
     this.lockedTrades.clear();
     this.lockRetryState.clear();
+    this.minaLockTxHashes.clear();
 
     logger.info('✓ Coordinator stopped');
   }
@@ -171,6 +176,14 @@ export class Coordinator {
     );
 
     try {
+      // If we've already locked this trade on both chains, don't try again.
+      if (this.lockedTrades.has(minaTrade.tradeId)) {
+        logger.debug(
+          `[Coordinator] Trade ${minaTrade.tradeId} already locked; skipping processTrade`,
+        );
+        return;
+      }
+
       // Check port availability FIRST
       const isPortAvailable = await portManager.isPortAvailable(minaTrade.tradeId);
 
@@ -286,11 +299,18 @@ export class Coordinator {
         claimantPk = PublicKey.fromBase58(state.minaState.depositor);
       }
 
-      // Step 1: Lock MINA side
-      const minaTxHash = await minaClient.lockTrade(state.tradeId, claimantPk);
-
+      // Step 1: Lock MINA side (at most once per tradeId)
+      let minaTxHash = this.minaLockTxHashes.get(state.tradeId) ?? null;
       if (!minaTxHash) {
-        throw new Error('Failed to lock MINA side');
+        minaTxHash = await minaClient.lockTrade(state.tradeId, claimantPk);
+        if (!minaTxHash) {
+          throw new Error('Failed to lock MINA side');
+        }
+        this.minaLockTxHashes.set(state.tradeId, minaTxHash);
+      } else {
+        logger.debug(
+          `[Coordinator] Re-using cached MINA lock tx for ${state.tradeId}: ${minaTxHash}`,
+        );
       }
 
       // Step 2: Lock ZEC side
@@ -338,12 +358,16 @@ export class Coordinator {
           logger.warn(`Max retries reached for ${state.tradeId}, triggering emergency unlock`);
           await minaClient.emergencyUnlock(state.tradeId);
           this.lockRetryState.delete(state.tradeId);
+          this.minaLockTxHashes.delete(state.tradeId);
         }
         return;
       }
 
       logger.info(`✓✓ Trade ${state.tradeId} locked on both chains`);
       this.lockRetryState.delete(state.tradeId);
+      // Keep minaLockTxHashes entry for the lifetime of the trade so we never
+      // submit a second lockTrade() tx for this tradeId. It will be cleared
+      // when the trade is claimed / refunded or on emergency unlock.
       this.lockedTrades.set(state.tradeId, minaTrade);
 
     } catch (error) {
@@ -360,12 +384,14 @@ export class Coordinator {
     if (!zecState) {
       logger.warn(`Escrowd unavailable for ${tradeId}; cleaning cached lock state`);
       this.lockedTrades.delete(tradeId);
+      this.minaLockTxHashes.delete(tradeId);
       return;
     }
 
     if (!zecState.in_transit) {
       // already sent or unlocked
       this.lockedTrades.delete(tradeId);
+      this.minaLockTxHashes.delete(tradeId);
       return;
     }
 

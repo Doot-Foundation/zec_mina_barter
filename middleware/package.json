@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node build/index.js",
-    "reset:local": "rm -rf ../zcash/escrowdv2/data ../mina/escrowm-init/src/scripts/.state",
+    "reset:local": "rm -rf .state ../zcash/escrowdv2/data ../mina/escrowm-init/src/scripts/.state",
     "dev": "tsc && node build/index.js",
     "watch": "tsc --watch",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",

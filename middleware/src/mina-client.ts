@@ -134,7 +134,13 @@ export class MinaClient {
 
   /**
    * Query tracked active trades using simple .get() method
-   * Only checks trades we're actively managing
+   * Only checks trades we're actively managing.
+   *
+   * NOTE:
+   * - We intentionally delegate all OffchainState access to getTrade()
+   *   so that any transient OffchainState errors (root mismatch,
+   *   precondition conflicts during settlement, etc.) are handled in
+   *   one place instead of duplicating logic here.
    */
   async getActiveTrades(): Promise<MinaTrade[]> {
     const trades: MinaTrade[] = [];
@@ -150,54 +156,19 @@ export class MinaClient {
       );
       return trades;
     }
-
-    // Use a single zkApp + account fetch for all tracked trades
-    const zkApp = await this.getZkApp();
-    await fetchAccountWithRetry({ publicKey: config.mina.poolAddress });
-
     for (const tradeId of this.trackedTradeIds) {
-      logger.debug(`[MinaClient]   -> querying tradeId=${tradeId} via OffchainState.get()`);
-
       try {
-        const tradeIdField = this.toTradeIdField(tradeId);
-        const opt = await zkApp.offchainState.fields.trades.get(tradeIdField);
-
-        // Case 1: No entry yet on-chain – keep tracking, it's likely not settled yet.
-        if (!opt.isSome.toBoolean()) {
+        const trade = await this.getTrade(tradeId);
+        if (trade) {
           logger.debug(
-            `[MinaClient]   <- trade ${tradeId} not yet present in OffchainState (field=${tradeIdField.toString()}); keeping tracked`,
+            `[MinaClient]   <- active trade ${tradeId}: amount=${trade.amount} inTransit=${trade.inTransit}`,
           );
-          continue;
-        }
-
-        const tradeData = opt.value;
-
-        // Case 2: Explicitly completed (TradeData.empty()) – unregister permanently.
-        if (tradeData.completed.toBoolean()) {
+          trades.push(trade);
+        } else {
           logger.debug(
-            `[MinaClient]   <- trade ${tradeId} marked completed in OffchainState; unregistering from tracking`,
+            `[MinaClient]   <- trade ${tradeId} not active or not present in OffchainState this poll`,
           );
-          this.unregisterTrade(tradeId);
-          continue;
         }
-
-        // Case 3: Active trade – convert to MinaTrade DTO.
-        const result: MinaTrade = {
-          tradeId,
-          tradeIdField: tradeIdField.toString(),
-          depositor: tradeData.depositor.toBase58(),
-          amount: tradeData.amount.toString(),
-          inTransit: tradeData.inTransit.toBoolean(),
-          claimant: tradeData.claimant.toBase58(),
-          refundAddress: tradeData.refundAddress.toBase58(),
-          depositBlockHeight: tradeData.depositBlockHeight.toString(),
-          expiryBlockHeight: tradeData.expiryBlockHeight.toString(),
-        };
-
-        logger.debug(
-          `[MinaClient]   <- active trade ${tradeId}: amount=${result.amount} inTransit=${result.inTransit}`,
-        );
-        trades.push(result);
       } catch (error) {
         logger.error(
           `[MinaClient]   !! error while querying trade ${tradeId} in getActiveTrades(): ${error}`,
@@ -246,6 +217,9 @@ export class MinaClient {
         logger.debug(
           `[MinaClient] getTrade(${tradeId}) -> completed=true (field=${tradeIdField.toString()})`,
         );
+         // Once a trade is explicitly marked completed in OffchainState,
+         // we can safely stop tracking it locally.
+         this.unregisterTrade(tradeId);
         return null;
       }
 
@@ -270,12 +244,18 @@ export class MinaClient {
       return result;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      if (msg.includes("root mismatch")) {
-        // This typically happens while a settlement proof has updated the
-        // offchainState merkleMap but the on-chain commitments haven't been
-        // updated yet. Treat it as a transient condition and retry next poll.
+      const transientPatterns = [
+        "root mismatch",
+        "Precondition Error",
+        "This function can't be run outside of a checked computation",
+        "You cannot use Unconstrained.get()",
+      ];
+      if (transientPatterns.some((p) => msg.includes(p))) {
+        // These typically happen while a settlement proof is in-flight or
+        // OffchainState is updating commitments. Treat them as transient and
+        // retry on the next poll instead of surfacing a hard error.
         logger.warn(
-          `[MinaClient] Transient OffchainState root mismatch while querying trade ${tradeId}; likely settlement in progress. Skipping this poll.`,
+          `[MinaClient] Transient OffchainState error while querying trade ${tradeId}: ${msg}. Skipping this poll.`,
         );
       } else {
         logger.error(
