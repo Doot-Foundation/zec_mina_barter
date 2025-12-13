@@ -135,7 +135,7 @@ cargo build --release
 
 **Test**:
 ```bash
-cargo test  # Run unit tests
+cargo test  # Run unit tests (64 tests)
 ```
 
 **Run**:
@@ -144,26 +144,28 @@ RUST_LOG=info cargo run  # Development
 ./target/release/escrowdv2  # Production binary
 ```
 
+**Default Port**: 9000 (first instance), sequential allocation for multiple instances
+
 **API Endpoints**:
 ```bash
-# Health check
-curl http://localhost:8080/health
+# Health check (replace PORT with actual port, e.g., 9000)
+curl http://localhost:PORT/health
 
 # Get escrow address
-curl http://localhost:8080/address
+curl http://localhost:PORT/address
 
 # Check balance
-curl http://localhost:8080/balance
+curl http://localhost:PORT/balance
 
 # Check status
-curl http://localhost:8080/status
+curl http://localhost:PORT/status
 ```
 
 ### 4. MinaEscrowPool (MINA zkApp)
 
 **Setup**:
 ```bash
-cd escrowm
+cd mina/escrowm-init
 npm install
 ```
 
@@ -186,8 +188,10 @@ npm run deploy:zeko
 
 **Test**:
 ```bash
-npm test
-npm run testw  # Watch mode
+npm test                 # Unit tests
+npm run testw            # Watch mode
+npm run test:msi-real    # Mina-initiated swap (full integration)
+npm run test:zsi-real    # ZEC-initiated swap (full integration)
 ```
 
 ### 5. Middleware (Coordinator)
@@ -220,9 +224,13 @@ MINA_POOL_ADDRESS=B62q...  # From deploy output
 
 # Escrowd instances
 ESCROWD_BASE_URL=http://127.0.0.1
-ESCROWD_BASE_PORT=8000
-ESCROWD_PORT_RANGE=10000
-ESCROWD_OPERATOR_TOKEN=your-secure-token
+ESCROWD_BASE_PORT=9000  # Sequential allocation starting point
+ESCROWD_OPERATOR_TOKEN=this_is_escrowd_operator_token  # POC unified token
+
+# Oracle (Doot Foundation)
+ORACLE_API_KEY=your-doot-api-key
+ORACLE_BASE_URL=https://doot.foundation
+ORACLE_SLIPPAGE_BPS=1000  # 10% slippage tolerance
 
 # Polling
 POLL_INTERVAL_MS=15000
@@ -249,8 +257,8 @@ npm run dev    # Development
 | zcashd P2P | 18233 | TCP | Testnet peers |
 | lightwalletd gRPC | 9067 | gRPC | Wallet sync |
 | lightwalletd HTTP | 9068 | HTTP | Status checks |
-| escrowdv2 API | 8080 | HTTP | Escrow service |
-| escrowd instances | 8000+ | HTTP | Per-trade escrows |
+| middleware API | 3000 | HTTP | Coordinator API |
+| escrowd instances | 9000+ | HTTP | Per-trade escrows (sequential ports) |
 
 ---
 
@@ -263,7 +271,8 @@ docker ps | grep -E "zcashd|lightwalletd"
 # Test endpoints
 curl http://localhost:18232/  # zcashd (will show error - that's ok)
 curl http://localhost:9068/status  # lightwalletd
-curl http://localhost:8080/health  # escrowdv2
+curl http://localhost:3000/health  # middleware
+curl http://localhost:9000/health  # escrowdv2 (first instance)
 
 # Check zcashd blockchain info
 curl --user zcashrpc:your_secure_password_here_change_me \
@@ -318,7 +327,7 @@ docker exec zcashd-testnet cat /root/.zcash/zcash.conf | grep rpcpassword
 cat zcash/escrowdv2/.env
 
 # Check if ports are available
-lsof -i :8080
+lsof -i :9000  # Check first sequential port
 
 # Check Rust/Cargo installation
 cargo --version
@@ -328,6 +337,13 @@ cd zcash/escrowdv2
 cargo clean
 cargo build --release
 ```
+
+### Issue: "Root mismatch" or "Cannot read properties of undefined"
+
+These are transient OffchainState errors during settlement proof generation:
+- **Cause**: Settlement worker is updating commitments (5-6 minute process)
+- **Resolution**: Automatic - middleware skips affected polls and retries
+- **Action**: Wait for settlement to complete (~6 minutes max)
 
 ### Issue: Lightwalletd sync taking forever
 

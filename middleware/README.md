@@ -53,20 +53,28 @@ Stateless polling-based coordinator that:
 
 - Queries MINA chain for active trades (every 15s by default)
 - Checks corresponding ZEC escrowdv2 instances
-- Locks both sides when both funded
+- Locks both sides when both funded (with Doot oracle + CoinGecko fallback pricing)
 - Sweeps ZEC after MINA claim
+- **Clean Slate Recovery**: On startup, emergency unlocks any stuck MINA locks
+- **Multi-Lock Prevention**: Caches MINA lock tx hashes to prevent duplicate locks
+- **Retry Logic**: 5 attempts with 60s backoff for ZEC locks, then emergency unlock
+- **Transient Error Handling**: Skips "root mismatch" errors during settlement
 
 ### 3. Settlement Worker
 
-- Generates ZK proofs for off-chain state changes
+- Monitors pending OffchainState actions every 60 seconds
+- Generates ZK proofs for off-chain state changes (~5-6 minutes)
 - Submits settlement transactions to MINA chain
 - Ensures off-chain state integrity
+- **Non-Blocking**: Runs in background while coordinator handles new trades
+- **Lock Prevention**: Uses `isSettling` flag to prevent concurrent settlements
 
 ### 4. Process Management
 
-- Spawns escrowdv2 instances on deterministic ports
+- Spawns escrowdv2 instances on **sequential ports** (9000, 9001, 9002, ...)
 - Tracks process lifecycle
 - Cleans up on shutdown
+- **Port Allocation**: Simple sequential counter, NOT hash-based derivation
 
 ## Installation
 
@@ -89,7 +97,7 @@ MINA_GRAPHQL_ENDPOINT=https://devnet.zeko.io/graphql
 MINA_POOL_ADDRESS=B62q...
 
 # Escrowd
-ESCROWD_OPERATOR_TOKEN=your-secret-token
+ESCROWD_OPERATOR_TOKEN=this_is_escrowd_operator_token  # POC unified token
 
 # Supabase (keypair store)
 SUPABASE_URL=https://your-project.supabase.co
@@ -107,13 +115,19 @@ API_HOST=127.0.0.1
 API_PORT=3000
 
 # Escrowd Configuration
-ESCROWD_BASE_PORT=8000
-ESCROWD_PORT_RANGE=10000
+ESCROWD_BASE_PORT=9000  # Sequential allocation starting point
 ESCROWD_BINARY_PATH=cargo
 ESCROWD_WORKING_DIR=../zcash/escrowdv2
 
-# Polling
-POLL_INTERVAL_MS=15000
+# Polling & Settlement
+POLL_INTERVAL_MS=15000         # Coordinator polling (default: 15s)
+SETTLEMENT_INTERVAL_MS=60000   # Settlement worker (default: 60s)
+
+# Oracle (Doot Foundation)
+ORACLE_API_KEY=your-doot-api-key
+ORACLE_BASE_URL=https://doot.foundation
+ORACLE_SLIPPAGE_BPS=1000      # 10% slippage tolerance
+ORACLE_TTL_MS=480000          # Price TTL (8 minutes)
 
 # Logging
 LOG_LEVEL=info
@@ -202,26 +216,29 @@ curl http://127.0.0.1:3000/api/escrowd/instances
 3. **Seller claims from escrow** → ZEC sent to seller
 4. **Middleware sweeps MINA** → MINA sent to buyer
 
-## Port Calculation
+## Port Allocation
 
-Ports are deterministically calculated from trade UUIDs:
+Ports are allocated **sequentially** (NOT hash-based):
 
 ```typescript
-port = basePort + (Poseidon(hash(uuid)) % portRange);
+// Simple sequential allocation
+port = nextAvailablePort; // Starting from ESCROWD_BASE_PORT (default: 9000)
+nextAvailablePort++;
 ```
 
 **Example:**
 
-- Trade ID: `550e8400-e29b-41d4-a716-446655440000`
-- Base Port: `8000`
-- Port Range: `10000`
-- Result: Port `8123` (deterministic)
+- First trade: Port `9000`
+- Second trade: Port `9001`
+- Third trade: Port `9002`
+- ...and so on
 
 This ensures:
 
-- Same trade ID always gets same port
-- Matches zkApp port calculation
-- No centralized port registry needed
+- Simple, predictable port allocation
+- No port collisions within middleware session
+- Easy to track and debug
+- **POC Simplification**: Production would use hash-based derivation for distributed coordinators
 
 ## Testing
 
@@ -309,6 +326,28 @@ echo $MINA_POOL_ADDRESS
 
 # Increase log level
 LOG_LEVEL=debug npm start
+```
+
+### "Root mismatch" or "Cannot read properties of undefined"
+
+These are transient OffchainState errors during settlement:
+
+- **Cause**: Settlement worker is generating proofs (~5-6 minutes)
+- **Resolution**: Automatic - middleware skips affected polls and retries
+- **Action**: Wait for settlement to complete
+- **Not an error**: Normal behavior during OffchainState commitment updates
+
+### Oracle pricing failures
+
+Check Doot oracle health and fallback:
+
+```bash
+# Check Doot API
+curl -H "Authorization: Bearer $ORACLE_API_KEY" \
+  https://doot.foundation/api/get/price?token=mina
+
+# CoinGecko fallback is automatic on Doot failure
+# Check logs for: "⚠️  Doot oracle failed, using CoinGecko fallback"
 ```
 
 ## Contributing

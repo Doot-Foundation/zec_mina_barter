@@ -1,5 +1,5 @@
 import { config, getEscrowdUrl } from './config.js';
-import { logger } from './logger.js';
+import { logger, colors } from './logger.js';
 import { EscrowdStatusResponse, EscrowdAddressResponse } from './types.js';
 import { portAllocator } from './port-allocator.js';
 
@@ -70,7 +70,7 @@ export class EscrowdClient {
         ? `${config.escrowd.baseUrl}:${allocatedPort}/set-in-transit`
         : getEscrowdUrl(tradeId, '/set-in-transit');
       logger.info(
-        `Locking escrowd for trade ${tradeId} on ${url} with MINA tx ${minaTxHash}`
+        `${colors.zec}Locking escrowd for trade ${tradeId} on ${url} with MINA tx ${minaTxHash}`
       );
 
       const response = await fetch(url, {
@@ -94,10 +94,10 @@ export class EscrowdClient {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      logger.info(`✓ Escrowd locked for trade ${tradeId}`);
+      logger.info(`${colors.zec}✓ Escrowd locked for trade ${tradeId}`);
       return true;
     } catch (error) {
-      logger.error(`Failed to lock escrowd for ${tradeId}: ${error}`);
+      logger.error(`${colors.zec}Failed to lock escrowd for ${tradeId}: ${error}`);
       return false;
     }
   }
@@ -111,7 +111,7 @@ export class EscrowdClient {
       const url = allocatedPort
         ? `${config.escrowd.baseUrl}:${allocatedPort}/send-target`
         : getEscrowdUrl(tradeId, '/send-target');
-      logger.info(`Sending ZEC to ${targetAddress} for trade ${tradeId} via ${url}`);
+      logger.info(`${colors.zec}Sending ZEC to ${targetAddress} for trade ${tradeId} via ${url}`);
 
       const response = await fetch(url, {
         method: 'POST',
@@ -129,10 +129,10 @@ export class EscrowdClient {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      logger.info(`✓ ZEC sent for trade ${tradeId}`);
+      logger.info(`${colors.zec}✓ ZEC sent for trade ${tradeId}`);
       return true;
     } catch (error) {
-      logger.error(`Failed to send ZEC for ${tradeId}: ${error}`);
+      logger.error(`${colors.zec}Failed to send ZEC for ${tradeId}: ${error}`);
       return false;
     }
   }

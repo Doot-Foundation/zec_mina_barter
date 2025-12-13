@@ -9,7 +9,7 @@ Zcash lacks programmable logic for escrow. Traditional solutions require wrapped
 trusted custodians or centralized exchanges that destroy privacy. This system uses ephemeral escrow
 instances (escrowdv2) that preserve Zcash's shielded architecture:
 
-- Sealed keys per-trade: Each swap gets a dedicated instance (port 9000+) with keys never exposed to
+- Sealed keys per-trade: Each swap gets a dedicated instance (sequential ports starting from 9000) with keys never exposed to
   zcashd
 - LightWalletd-only detection: Escrow addresses never touch zcashd funds detected via encrypted shielded
   notes
@@ -43,16 +43,18 @@ better than any EVM chain.
 
 Current POC uses shortcuts for rapid testing:
 
-- Unified operator token (this_is_escrowd_operator_token) across all trades
-- Simple sequential port allocation
-- Single middleware instance
+- **Unified operator token** (`this_is_escrowd_operator_token`) across all trades - NOT production-ready
+- **Simple sequential port allocation** - Starting from 9000, incrementing (vs. hash-based derivation)
+- **Single middleware instance** - No distributed coordinator yet
+- **CoinGecko fallback** - Doot oracle with automatic CoinGecko fallback on failure
 
 Production-ready architecture would enable:
 
-- Per-trade cryptographic API keys (derived from trade commitment)
-- Distributed middleware (anyone can run polling coordinator)
-- Multi-signature operator controls
-- Enhanced memo encryption schemes
+- **Per-trade cryptographic operator tokens** (derived from trade commitment, stored in database)
+- **Distributed middleware** (anyone can run polling coordinator)
+- **Multi-signature operator controls** (threshold signatures for critical operations)
+- **Enhanced memo encryption schemes** (additional privacy layers)
+- **Deterministic port derivation** (hash-based allocation from trade ID)
 
 With proper implementation, this could become the leading escrow service for Zcash offering
 smart contract guarantees (timeouts, refunds, conditional claims) to a chain that fundamentally can't

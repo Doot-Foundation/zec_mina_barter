@@ -119,7 +119,7 @@ The current implementation uses a **unified operator token** (`this_is_escrowd_o
   - Protects `/funding/shielded`, `/funding/transparent`, `/send-back`
   - Passed in request body: `{"api_key": "3a7f9b2c8d1e4f5a..."}`
   - Prevents cross-trade interference
-- **Port Isolation**: Sequential allocation (9000, 9001, 9002...) limits to 10,000 concurrent trades
+- **Port Isolation**: Sequential allocation starting from 9000 (configurable ESCROWD_BASE_PORT)
 
 **Production Deployment Should**:
 - Generate unique cryptographic tokens per-trade
@@ -162,7 +162,7 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 - **Retry Logic**: 5 attempts with 60s backoff
 - **Shared Contracts**: Global zkApp compilation (compile once, use everywhere)
 - **Escrowdv2 Readiness**: 9-minute timeout for instance spawn + sync
-- **Oracle Integration**: Doot price feeds with 10% slippage tolerance
+- **Oracle Integration**: Doot Foundation price feeds + CoinGecko fallback (10% slippage tolerance)
 
 **Process Flow**:
 
@@ -193,9 +193,10 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 - **Non-Blocking**: Runs in background while coordinator handles new trades
 - **Anyone Can Settle**: Settlement is permissionless (not operator-only)
 - **Lock Prevention**: Prevents concurrent settlements with `isSettling` flag
+- **Transient Error Handling**: Skips root mismatch errors (resolves after settlement completes)
 
 **Configuration**:
-- Interval: 60 seconds (configurable)
+- Interval: 60 seconds (configurable via SETTLEMENT_INTERVAL_MS)
 - Minimum actions threshold: 1 (triggers on any pending action)
 - Timeout: None (proof generation takes as long as needed)
 
@@ -206,6 +207,9 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 3. Generate settlement proof (~5-6 minutes)
 4. Submit `settle(proof)` transaction to MinaEscrowPool
 5. Wait for confirmation, then resume monitoring
+
+**Known Issues**:
+- During settlement, queries may return "root mismatch" errors - these are transient and resolve automatically
 
 ---
 
@@ -221,12 +225,12 @@ IN_TRANSIT → [send-target] → COMPLETE (success)
 
 1. Middleware generates UUID: `550e8400-e29b-41d4-a716-446655440000`
 2. Derives trade ID Field: `Poseidon(UUID)`
-3. Allocates sequential port: `ESCROWD_BASE_PORT + trade_count = 9000` (first trade)
+3. Allocates next sequential port: `9000` (first trade), then `9001`, `9002`, etc.
 4. Generates per-trade API key: Random 32-byte hex string (e.g., `3a7f9b2c8d1e4f5a...`)
 5. Spawns escrowd instance with:
-   - Port: 9000+ (sequential allocation)
+   - Port: Sequential from ESCROWD_BASE_PORT (default: 9000)
    - API_KEY: Per-trade random hex (e.g., `3a7f9b2c8d1e4f5a6b7c8d9e0f1a2b3c`)
-   - OPERATOR_TOKEN: Unified `this_is_escrowd_operator_token`
+   - OPERATOR_TOKEN: Unified `this_is_escrowd_operator_token` (environment variable)
 
 ### Step-by-Step Flow
 
@@ -364,9 +368,20 @@ for (let i = 0; i < 5; i++) {
 ```typescript
 // On restart:
 // 1. Rebuild OffchainState from archive actions
-// 2. Query all escrowd instances
-// 3. Resume from current state (stateless design)
+// 2. Run clean slate recovery - emergency unlock any stuck MINA locks
+// 3. Query all escrowd instances
+// 4. Resume from current state (stateless design)
 // No data loss because all state is on-chain or in escrowd
+```
+
+### Scenario 4: Root Mismatch Errors (Transient OffchainState)
+
+```typescript
+// During settlement or queries, OffchainState commitments may be updating
+// Middleware treats these as transient and skips the affected poll:
+// - "root mismatch"
+// - "Cannot read properties of undefined"
+// Settlement worker runs in background and resolves these within 5-6 minutes
 ```
 
 ### Scenario 3: User Wants Refund
@@ -596,7 +611,10 @@ zec_barter/
 ### Known Limitations
 
 - ⚠️ Operator centralization (single point of trust)
-- ⚠️ 5-6 minute settlement delay (OffchainState)
+- ⚠️ 5-6 minute settlement delay (OffchainState batched proofs)
+- ⚠️ Unified operator token POC simplification (not production-secure)
+- ⚠️ Sequential port allocation limits concurrent trades
+- ⚠️ Transient root mismatch errors during settlement (auto-resolves)
 - ⚠️ Manual trade initiation (no order book yet)
 - ⚠️ No web UI (CLI only)
 - ⚠️ Testnet only (not production ready)

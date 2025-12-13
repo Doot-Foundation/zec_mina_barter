@@ -1,6 +1,6 @@
 import { PublicKey } from 'o1js';
 import { config } from './config.js';
-import { logger } from './logger.js';
+import { logger, colors } from './logger.js';
 import { minaClient } from './mina-client.js';
 import { escrowdClient } from './escrowd-client.js';
 import { CombinedTradeState, MinaTrade } from './types.js';
@@ -27,6 +27,10 @@ export class Coordinator {
   // submit multiple lockTrade() txs for the same trade while we
   // are still trying to lock the ZEC side.
   private minaLockTxHashes = new Map<string, string>();
+  // Trades currently undergoing a lockBothSides() flow. Prevents
+  // concurrent lock attempts for the same tradeId across overlapping
+  // poll cycles.
+  private lockingTrades = new Set<string>();
 
   /**
    * Initialize coordinator
@@ -89,6 +93,7 @@ export class Coordinator {
     this.lockedTrades.clear();
     this.lockRetryState.clear();
     this.minaLockTxHashes.clear();
+    this.lockingTrades.clear();
 
     logger.info('✓ Coordinator stopped');
   }
@@ -184,6 +189,22 @@ export class Coordinator {
         return;
       }
 
+      // If a lockBothSides() call is already in progress for this trade,
+      // skip to avoid overlapping lock attempts and nonce conflicts.
+      if (this.lockingTrades.has(minaTrade.tradeId)) {
+        logger.debug(
+          `[Coordinator] Trade ${minaTrade.tradeId} is currently being locked; skipping this cycle`,
+        );
+        return;
+      }
+      // If we've already locked this trade on both chains, don't try again.
+      if (this.lockedTrades.has(minaTrade.tradeId)) {
+        logger.debug(
+          `[Coordinator] Trade ${minaTrade.tradeId} already locked; skipping processTrade`,
+        );
+        return;
+      }
+
       // Check port availability FIRST
       const isPortAvailable = await portManager.isPortAvailable(minaTrade.tradeId);
 
@@ -216,12 +237,12 @@ export class Coordinator {
       // Check if ready to lock
       if (state.readyToLock) {
         logger.info(
-          `[Coordinator] ✓ Trade ${minaTrade.tradeId} ready to lock (MINA inTransit=${state.minaState.inTransit}, ZEC verified=${state.zecState.verified}, ZEC in_transit=${state.zecState.in_transit})`,
+          `${colors.locking}[Coordinator] ✓ Trade ${minaTrade.tradeId} ready to lock (MINA inTransit=${state.minaState.inTransit}, ZEC verified=${state.zecState.verified}, ZEC in_transit=${state.zecState.in_transit})`,
         );
         await this.lockBothSides(state, minaTrade);
       } else {
         logger.info(
-          `[Coordinator] Trade ${minaTrade.tradeId} not ready (MINA inTransit=${state.minaState.inTransit}, ZEC verified=${state.zecState.verified}, ZEC in_transit=${state.zecState.in_transit})`,
+          `${colors.locking}[Coordinator] Trade ${minaTrade.tradeId} not ready (MINA inTransit=${state.minaState.inTransit}, ZEC verified=${state.zecState.verified}, ZEC in_transit=${state.zecState.in_transit})`,
         );
       }
 
@@ -275,7 +296,16 @@ export class Coordinator {
       return;
     }
 
-    logger.info(`Locking trade ${state.tradeId} on both chains...`);
+    // Guard against concurrent lock attempts for the same tradeId.
+    if (this.lockingTrades.has(state.tradeId)) {
+      logger.debug(
+        `[Coordinator] lockBothSides called while lock already in progress for ${state.tradeId}; skipping`,
+      );
+      return;
+    }
+    this.lockingTrades.add(state.tradeId);
+
+    logger.info(`${colors.locking}Locking trade ${state.tradeId} on both chains...`);
 
     try {
       // Oracle pricing (USD) to derive cross-rate
@@ -307,6 +337,11 @@ export class Coordinator {
           throw new Error('Failed to lock MINA side');
         }
         this.minaLockTxHashes.set(state.tradeId, minaTxHash);
+
+        // FIX: Immediately mark as locked to prevent duplicate MINA lock attempts
+        // This must be set here, not after ZEC lock, to prevent re-entry if ZEC fails
+        this.lockedTrades.set(state.tradeId, minaTrade);
+        logger.info(`${colors.locking}[Coordinator] ✓ MINA locked, trade ${state.tradeId} marked as locked (tx: ${minaTxHash})`);
       } else {
         logger.debug(
           `[Coordinator] Re-using cached MINA lock tx for ${state.tradeId}: ${minaTxHash}`,
@@ -335,6 +370,7 @@ export class Coordinator {
         return;
       }
 
+      logger.info(`${colors.locking}[Coordinator] Attempting ZEC lock for ${state.tradeId} (MINA already locked with tx: ${minaTxHash})`);
       const zecLocked = await escrowdClient.setInTransit(
         state.tradeId,
         minaTxHash,
@@ -352,26 +388,32 @@ export class Coordinator {
         const nextAttempt = now + 60_000;
         this.lockRetryState.set(state.tradeId, { attempts, nextAttempt });
         logger.warn(
-          `ZEC lock failed for ${state.tradeId}. Attempt ${attempts}/5, retrying after 60s`
+          `ZEC lock failed for ${state.tradeId}. Attempt ${attempts}/5, retrying after 60s. ` +
+          `MINA tx: ${minaTxHash}, lockedTrades size: ${this.lockedTrades.size}`
         );
         if (attempts >= 5) {
           logger.warn(`Max retries reached for ${state.tradeId}, triggering emergency unlock`);
           await minaClient.emergencyUnlock(state.tradeId);
           this.lockRetryState.delete(state.tradeId);
           this.minaLockTxHashes.delete(state.tradeId);
+          this.lockedTrades.delete(state.tradeId);  // Also clear lockedTrades on emergency unlock
         }
         return;
       }
 
-      logger.info(`✓✓ Trade ${state.tradeId} locked on both chains`);
+      logger.info(`${colors.locking}✓✓ Trade ${state.tradeId} locked on both chains (MINA: ${minaTxHash}, ZEC: locked)`);
       this.lockRetryState.delete(state.tradeId);
       // Keep minaLockTxHashes entry for the lifetime of the trade so we never
       // submit a second lockTrade() tx for this tradeId. It will be cleared
       // when the trade is claimed / refunded or on emergency unlock.
-      this.lockedTrades.set(state.tradeId, minaTrade);
+      // Note: lockedTrades already set after MINA lock success above
 
     } catch (error) {
-      logger.error(`Failed to lock trade ${state.tradeId}: ${error}`);
+      logger.error(`${colors.locking}Failed to lock trade ${state.tradeId}: ${error}`);
+    } finally {
+      // Always clear the in-progress flag so future attempts can proceed
+      // if needed (e.g. after an emergency unlock).
+      this.lockingTrades.delete(state.tradeId);
     }
   }
 

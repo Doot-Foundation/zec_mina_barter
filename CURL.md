@@ -125,11 +125,14 @@ docker restart lightwalletd && sleep 2 && docker logs lightwalletd --tail 50
 curl http://127.0.0.1:3000/health
 ```
 
-### Spawn escrowdv2 Instance
+### Spawn escrowdv2 Instance (Sequential Port Allocation)
 ```bash
+# Middleware allocates next available port (9000, 9001, 9002, ...)
 curl -X POST http://127.0.0.1:3000/api/spawn-escrowd \
   -H 'Content-Type: application/json' \
-  -d '{"tradeId":"TRADE_UUID","apiKey":"API_KEY"}'
+  -d '{"tradeId":"TRADE_UUID","apiKey":"RANDOM_32_BYTE_HEX"}'
+
+# Response includes allocated port: {"success": true, "port": 9000, ...}
 ```
 
 ### Get escrowdv2 Instance Status via Middleware
@@ -140,6 +143,11 @@ curl http://127.0.0.1:3000/api/escrowd/TRADE_ID/status
 ### Kill escrowdv2 Instance
 ```bash
 curl -X DELETE http://127.0.0.1:3000/api/escrowd/TRADE_ID
+```
+
+### List All Active Instances
+```bash
+curl http://127.0.0.1:3000/api/escrowd/instances
 ```
 
 ## Utility Commands
@@ -168,4 +176,8 @@ lsof -ti:PORT | xargs -r kill -9
   - Transparent: starts with `t`
   - Shielded Sapling: starts with `zs`
   - Unified Address: starts with `u` (testnet: `utest`)
-- **Port Range**: escrowdv2 instances use sequential ports starting from 9000
+- **Port Allocation**: escrowdv2 instances use **sequential ports** starting from ESCROWD_BASE_PORT (default: 9000)
+  - First trade: 9000
+  - Second trade: 9001
+  - Third trade: 9002, etc.
+- **Operator Token**: Current POC uses unified token `this_is_escrowd_operator_token` (NOT production-ready)

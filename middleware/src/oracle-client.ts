@@ -1,4 +1,5 @@
 import { config } from './config.js';
+import { logger, colors } from './logger.js';
 
 // CoinGecko token ID mapping
 const COINGECKO_TOKEN_IDS: Record<'mina' | 'zec', string> = {
@@ -90,11 +91,11 @@ async function fetchPrice(token: 'mina' | 'zec'): Promise<OraclePrice> {
 
   } catch (dootError: any) {
     // Doot failed, try CoinGecko fallback
-    console.warn(`⚠️  Doot oracle failed for ${token}, using CoinGecko fallback: ${dootError.message}`);
+    logger.warn(`${colors.oracle}⚠️  Doot oracle failed for ${token}, using CoinGecko fallback: ${dootError.message}`);
 
     try {
       const fallbackPrice = await fetchFromCoinGecko(token);
-      console.info(`✓ CoinGecko fallback successful for ${token}`);
+      logger.info(`${colors.oracle}✓ CoinGecko fallback successful for ${token}`);
       return fallbackPrice;
     } catch (fallbackError: any) {
       throw new Error(
@@ -109,6 +110,7 @@ function withinTtl(ts: number, ttlMs: number): boolean {
 }
 
 export async function getCrossRate() {
+  logger.debug(`${colors.oracle}Fetching cross-rate from oracle...`);
   const [mina, zec] = await Promise.all([fetchPrice('mina'), fetchPrice('zec')]);
 
   if (!withinTtl(mina.aggregationTimestamp, config.oracle.ttlMs)) {

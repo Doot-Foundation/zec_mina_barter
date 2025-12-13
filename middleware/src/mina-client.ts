@@ -2,7 +2,7 @@ import { Mina, PublicKey, Field } from "o1js";
 import fs from "fs";
 import path from "path";
 import { config } from "./config.js";
-import { logger } from "./logger.js";
+import { logger, colors } from "./logger.js";
 import { MinaTrade } from "./types.js";
 import {
   getGlobalZkApp,
@@ -78,7 +78,7 @@ export class MinaClient {
    * Initialize network connection
    */
   async initialize() {
-    logger.info("Initializing Mina network connection...");
+    logger.info(`${colors.mina}Initializing Mina network connection...`);
 
     // Setup network
     this.network = Mina.Network({
@@ -87,7 +87,7 @@ export class MinaClient {
     });
     Mina.setActiveInstance(this.network);
 
-    logger.info(`✓ Connected to ${config.mina.network}`);
+    logger.info(`${colors.mina}✓ Connected to ${config.mina.network}`);
   }
 
   /**
@@ -280,7 +280,7 @@ export class MinaClient {
   ): Promise<string | null> {
     try {
       const tradeIdField = this.toTradeIdField(tradeId);
-      logger.info(`Locking MINA trade: ${tradeIdField.toString()}`);
+      logger.info(`${colors.mina}Locking MINA trade: ${tradeIdField.toString()}`);
 
       // Get zkApp instance
       const zkApp = await this.getZkApp();
@@ -309,7 +309,7 @@ export class MinaClient {
       }
 
       const txHash = signedTx.hash;
-      logger.info(`✓ MINA trade locked: ${txHash}`);
+      logger.info(`${colors.mina}✓ MINA trade locked: ${txHash}`);
 
       // Wait for inclusion (optional, GraphQL may not support bestChain)
       try {
@@ -324,7 +324,7 @@ export class MinaClient {
 
       return txHash;
     } catch (error) {
-      logger.error(`Failed to lock MINA trade: ${error}`);
+      logger.error(`${colors.mina}Failed to lock MINA trade: ${error}`);
       return null;
     }
   }
@@ -339,7 +339,7 @@ export class MinaClient {
   async emergencyUnlock(tradeId: string): Promise<string | null> {
     try {
       const tradeIdField = this.toTradeIdField(tradeId);
-      logger.warn(`Emergency unlock MINA trade: ${tradeIdField.toString()}`);
+      logger.warn(`${colors.mina}Emergency unlock MINA trade: ${tradeIdField.toString()}`);
 
       // Get zkApp instance
       const zkApp = await this.getZkApp();
@@ -368,7 +368,7 @@ export class MinaClient {
       }
 
       const txHash = signedTx.hash;
-      logger.warn(`✓ MINA trade emergency unlocked: ${txHash}`);
+      logger.warn(`${colors.mina}✓ MINA trade emergency unlocked: ${txHash}`);
 
       // Wait for inclusion (optional)
       try {
@@ -381,7 +381,7 @@ export class MinaClient {
 
       return txHash;
     } catch (error) {
-      logger.error(`Failed to emergency unlock MINA trade: ${error}`);
+      logger.error(`${colors.mina}Failed to emergency unlock MINA trade: ${error}`);
       return null;
     }
   }

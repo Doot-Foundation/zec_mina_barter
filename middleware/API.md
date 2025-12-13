@@ -35,25 +35,25 @@ Returns the health status of the middleware.
 
 **POST** `/api/spawn-escrowd`
 
-Spawns a new escrowdv2 instance for a trade on a deterministic port.
+Spawns a new escrowdv2 instance for a trade on the next available sequential port.
 
 **Request Body:**
 ```json
 {
   "tradeId": "550e8400-e29b-41d4-a716-446655440000",
-  "apiKey": "your-api-key-here"
+  "apiKey": "3a7f9b2c8d1e4f5a6b7c8d9e0f1a2b3c"
 }
 ```
 
 **Parameters:**
-- `tradeId` (required): Trade UUID that determines the port via Poseidon hash
-- `apiKey` (required): API key for the escrowdv2 instance
+- `tradeId` (required): Trade UUID (used for tracking, not port calculation)
+- `apiKey` (required): Random 32-byte hex string for per-trade API key
 
 **Response (Success):**
 ```json
 {
   "success": true,
-  "port": 8123,
+  "port": 9000,
   "message": "Instance spawned successfully"
 }
 ```
@@ -62,7 +62,7 @@ Spawns a new escrowdv2 instance for a trade on a deterministic port.
 ```json
 {
   "success": true,
-  "port": 8123,
+  "port": 9000,
   "message": "Instance already running"
 }
 ```
@@ -71,10 +71,15 @@ Spawns a new escrowdv2 instance for a trade on a deterministic port.
 ```json
 {
   "success": false,
-  "port": 8123,
+  "port": 9000,
   "message": "Failed to spawn: error details"
 }
 ```
+
+**Port Allocation:**
+- Ports are allocated sequentially: 9000, 9001, 9002, ...
+- First trade always gets port 9000 (unless already in use)
+- Each subsequent trade increments by 1
 
 **Example Usage:**
 ```bash
@@ -184,22 +189,27 @@ curl http://127.0.0.1:3000/api/escrowd/instances
 
 ---
 
-## Port Calculation
+## Port Allocation
 
-Ports are calculated deterministically from trade UUIDs using the same Poseidon hash algorithm as the zkApp:
+Ports are allocated **sequentially** (NOT hash-based) for simplicity in the POC:
 
 ```typescript
-port = basePort + (Poseidon(hash(uuid_chunks)) % portRange)
+// Sequential allocation
+port = nextAvailablePort; // Starting from ESCROWD_BASE_PORT
+nextAvailablePort++;
 ```
 
 **Default Configuration:**
-- Base Port: `8000`
-- Port Range: `10000`
-- Result: Ports between `8000-18000`
+- Base Port: `9000` (configurable via ESCROWD_BASE_PORT)
+- Allocation: Sequential (9000, 9001, 9002, ...)
+- Result: Simple, predictable port assignment
 
 **Environment Variables:**
-- `ESCROWD_BASE_PORT`: Starting port (default: 8000)
-- `ESCROWD_PORT_RANGE`: Range of ports (default: 10000)
+- `ESCROWD_BASE_PORT`: Starting port (default: 9000)
+
+**POC Simplification:**
+- Production deployments should use hash-based derivation for distributed coordinators
+- Current implementation assumes single middleware instance
 
 ---
 
@@ -265,7 +275,7 @@ Error responses include a `success: false` field and an `error` message:
 - `OPERATOR_PRIVATE_KEY`: Mina private key for coordinator
 - `MINA_GRAPHQL_ENDPOINT`: Mina/Zeko GraphQL endpoint
 - `MINA_POOL_ADDRESS`: Pool contract address
-- `ESCROWD_OPERATOR_TOKEN`: Token for escrowdv2 operator endpoints
+- `ESCROWD_OPERATOR_TOKEN`: Unified operator token (current: `this_is_escrowd_operator_token` - POC only)
 - `SUPABASE_URL`: Supabase database URL
 - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service key
 - `ORACLE_API_KEY`: Doot oracle API key
@@ -273,10 +283,13 @@ Error responses include a `success: false` field and an `error` message:
 **Optional Environment Variables:**
 - `API_HOST`: API server host (default: 127.0.0.1)
 - `API_PORT`: API server port (default: 3000)
-- `ESCROWD_BASE_PORT`: Escrowdv2 base port (default: 8000)
-- `ESCROWD_PORT_RANGE`: Port range (default: 10000)
+- `ESCROWD_BASE_PORT`: Escrowdv2 base port (default: 9000)
 - `ESCROWD_BINARY_PATH`: Path to escrowdv2 binary (default: "cargo")
 - `ESCROWD_WORKING_DIR`: Working directory (default: "../zcash/escrowdv2")
+- `POLL_INTERVAL_MS`: Coordinator polling interval (default: 15000)
+- `SETTLEMENT_INTERVAL_MS`: Settlement worker interval (default: 60000)
+- `ORACLE_API_KEY`: Doot Foundation API key (required)
+- `ORACLE_SLIPPAGE_BPS`: Slippage tolerance (default: 1000 = 10%)
 
 ---
 
@@ -322,10 +335,14 @@ curl -X DELETE http://127.0.0.1:3000/api/escrowd/550e8400-e29b-41d4-a716-4466554
 
 3. **Process Management**: The middleware tracks spawned processes and cleans them up on shutdown
 
-4. **Port Determinism**: Ports are deterministically calculated, preventing port conflicts
+4. **Sequential Port Allocation**: Simple counter-based allocation (POC simplification)
+
+5. **Unified Operator Token**: All escrowdv2 instances share `this_is_escrowd_operator_token` (NOT production-ready)
 
 For production deployments, consider:
-- Adding authentication/authorization
+- Adding authentication/authorization for spawn endpoints
 - Rate limiting
+- Per-trade cryptographic operator tokens (stored in database)
+- Hash-based port derivation for distributed coordinators
 - Logging and monitoring
 - Network isolation

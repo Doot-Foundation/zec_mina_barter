@@ -1,5 +1,5 @@
 import { config, getEscrowdUrl, getEscrowdPort } from './config.js';
-import { logger } from './logger.js';
+import { logger, colors } from './logger.js';
 
 /**
  * Port Manager
@@ -58,7 +58,7 @@ export class PortManager {
    */
   logCollision(tradeId: string, port: number): void {
     logger.warn(
-      `⚠️  PORT COLLISION: Trade ${tradeId} maps to occupied port ${port}. ` +
+      `${colors.port}⚠️  PORT COLLISION: Trade ${tradeId} maps to occupied port ${port}. ` +
       `Trade will be skipped until user regenerates UUID or escrowd instance exits.`
     );
   }
