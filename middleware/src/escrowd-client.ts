@@ -94,6 +94,16 @@ export class EscrowdClient {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
+      // Parse response to verify in_transit flag
+      const data = await response.json();
+      if (!data.in_transit) {
+        logger.warn(
+          `${colors.zec}⚠️  Escrowd returned success but in_transit=false for trade ${tradeId}. ` +
+          `This likely means MINA tx verification failed. Check escrowd logs for details.`
+        );
+        return false;
+      }
+
       logger.info(`${colors.zec}✓ Escrowd locked for trade ${tradeId}`);
       return true;
     } catch (error) {

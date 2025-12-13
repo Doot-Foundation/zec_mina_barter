@@ -28,6 +28,12 @@ struct AddressResponse {
 }
 
 async fn get_address(State(state): State<SharedState>) -> Json<AddressResponse> {
+    let line = format!(
+        "[escrowdv2] /address requested ua={}",
+        state.wallet.address(),
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
     tracing::info!("{} address requested", crate::logging::tags::INFO);
     Json(AddressResponse {
         ua: state.wallet.address().to_string(),
@@ -35,7 +41,18 @@ async fn get_address(State(state): State<SharedState>) -> Json<AddressResponse> 
 }
 
 async fn get_status(State(state): State<SharedState>) -> Json<StatusSnapshot> {
-    Json(state.status())
+    let status = state.status();
+    let line = format!(
+        "[escrowdv2] /status status={} verified={} in_transit={} origin={:?} mina_tx_hash={:?}",
+        status.status,
+        status.verified,
+        status.in_transit,
+        status.origin,
+        status.mina_tx_hash,
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
+    Json(status)
 }
 
 #[derive(Deserialize)]
@@ -60,10 +77,28 @@ async fn set_in_transit(
     headers: HeaderMap,
     Json(req): Json<InTransitRequest>,
 ) -> Result<Json<InTransitResponse>, AppError> {
+    let line = format!(
+        "[escrowdv2] /set-in-transit from={} mina_tx_hash={} expected_mina_amount={:?} oracle={{ mina_usd={:?}, zec_usd={:?}, decimals={:?} }}",
+        addr,
+        req.mina_tx_hash,
+        req.expected_mina_amount,
+        req.mina_usd,
+        req.zec_usd,
+        req.decimals,
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
+
     ensure_localhost(&addr)?;
     ensure_operator(&headers, &state)?;
     state.ensure_verified()?;
     if state.in_transit() {
+        let line = format!(
+            "[escrowdv2] /set-in-transit already in_transit=true mina_tx_hash={:?}",
+            state.status().mina_tx_hash,
+        );
+        eprintln!("{}", line);
+        crate::logging::append_trade_log(&line);
         return Ok(Json(InTransitResponse {
             in_transit: true,
             mina_tx_hash: state.status().mina_tx_hash,
@@ -76,6 +111,13 @@ async fn set_in_transit(
         req.mina_tx_hash,
         ok
     );
+    let line = format!(
+        "[escrowdv2] /set-in-transit verification result mina_tx_hash={} ok={}",
+        req.mina_tx_hash,
+        ok,
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
     if ok {
         if let (Some(exp_mina), Some(mina_usd), Some(zec_usd), Some(decimals)) = (
             req.expected_mina_amount.as_ref(),
@@ -106,6 +148,14 @@ async fn set_in_transit(
         }
     }
     state.set_in_transit(ok, Some(req.mina_tx_hash.clone()))?;
+    let final_line = format!(
+        "[escrowdv2] /set-in-transit state updated in_transit={} mina_tx_hash={}",
+        ok,
+        req.mina_tx_hash,
+    );
+    eprintln!("{}", final_line);
+    crate::logging::append_trade_log(&final_line);
+
     Ok(Json(InTransitResponse {
         in_transit: ok,
         mina_tx_hash: if ok { Some(req.mina_tx_hash) } else { None },
@@ -154,6 +204,16 @@ async fn bind_origin(
     State(state): State<SharedState>,
     Json(req): Json<BindOriginRequest>,
 ) -> Result<Json<StatusSnapshot>, AppError> {
+    let line = format!(
+        "[escrowdv2] /bind-origin from={} api_key={} origin_address={} origin_type={:?}",
+        addr,
+        req.api_key,
+        req.origin_address,
+        req.origin_type,
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
+
     ensure_localhost(&addr)?;
     state.ensure_api_key(&req.api_key)?;
     tracing::info!(
@@ -275,6 +335,14 @@ async fn funding_transparent(
     State(state): State<SharedState>,
     Json(req): Json<FundingTransparentRequest>,
 ) -> Result<Json<StatusSnapshot>, AppError> {
+    let line = format!(
+        "[escrowdv2] /funding/transparent request api_key={} funding_address={}",
+        req.api_key,
+        req.funding_address,
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
+
     state.ensure_api_key(&req.api_key)?;
     // Bind funding to both api_key and escrow address to prevent replay across escrows.
     let expected = format!(
@@ -310,6 +378,14 @@ async fn funding_transparent(
         state.wallet.address(),
         req.funding_address
     );
+    let ok_line = format!(
+        "[escrowdv2] transparent funding verified balance={} escrow_addr={} from_addr={}",
+        balance,
+        state.wallet.address(),
+        req.funding_address,
+    );
+    eprintln!("{}", ok_line);
+    crate::logging::append_trade_log(&ok_line);
 
     state.bind_origin(OriginBinding {
         origin_type: OriginType::Transparent,
@@ -322,6 +398,14 @@ async fn send_back(
     State(state): State<SharedState>,
     Json(req): Json<SendBackRequest>,
 ) -> Result<Json<SendResponse>, AppError> {
+    let line = format!(
+        "[escrowdv2] /send-back requested api_key={} signed_message_present={}",
+        req.api_key,
+        req.signed_message.is_some(),
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
+
     state.ensure_api_key(&req.api_key)?;
     state.ensure_verified()?;
     if state.in_transit() {
@@ -362,6 +446,13 @@ async fn send_back(
 
     drop(send_guard);
 
+    let done_line = format!(
+        "[escrowdv2] /send-back sweep_full_balance txid={}",
+        txid,
+    );
+    eprintln!("{}", done_line);
+    crate::logging::append_trade_log(&done_line);
+
     let resp = Json(SendResponse { txid });
     // Graceful shutdown after refund to origin
     schedule_shutdown(Duration::from_secs(60));
@@ -382,6 +473,13 @@ async fn send_target(
     }
 
     tracing::info!("{} send-target requested", crate::logging::tags::INFO);
+    let line = format!(
+        "[escrowdv2] /send-target from={} target_address={}",
+        addr,
+        req.target_address,
+    );
+    eprintln!("{}", line);
+    crate::logging::append_trade_log(&line);
     let send_guard = state.begin_send()?;
     let fee_policy = FeePolicy {
         bump_on_timeout: 1.2,
@@ -396,8 +494,16 @@ async fn send_target(
     drop(send_guard);
     state.set_in_transit(false, None)?;
 
+    let txid_clone = txid.clone();
+    let line_done = format!(
+        "[escrowdv2] /send-target sweep_full_balance txid={} - scheduling shutdown",
+        txid_clone,
+    );
+    eprintln!("{}", line_done);
+    crate::logging::append_trade_log(&line_done);
+
     // Exit after send-to-target to match documented behavior.
-    let txid_resp = Json(SendResponse { txid });
+    let txid_resp = Json(SendResponse { txid: txid.clone() });
     // Spawn a delayed shutdown so the response can be returned.
     schedule_shutdown(Duration::from_secs(60));
     Ok(txid_resp)
@@ -405,7 +511,12 @@ async fn send_target(
 
 fn schedule_shutdown(delay: Duration) {
     tokio::spawn(async move {
+        eprintln!(
+            "[escrowdv2] schedule_shutdown called, exiting process in {}s",
+            delay.as_secs()
+        );
         tokio::time::sleep(delay).await;
+        eprintln!("[escrowdv2] shutting down process now");
         std::process::exit(0);
     });
 }
